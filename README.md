@@ -7,9 +7,7 @@
 
 <h4 align="center">
   <a href="https://excalidraw.com">Excalidraw Editor</a> |
-  <a href="https://plus.excalidraw.com/blog">Blog</a> |
-  <a href="https://docs.excalidraw.com">Documentation</a> |
-  <a href="https://plus.excalidraw.com">Excalidraw+</a>
+  <a href="https://docs.excalidraw.com">Documentation</a>
 </h4>
 
 <div align="center">
@@ -75,7 +73,8 @@ The app hosted at [excalidraw.com](https://excalidraw.com) is a minimal showcase
 - 📡&nbsp;PWA support (works offline).
 - 🤼&nbsp;Real-time collaboration.
 - 🔒&nbsp;End-to-end encryption.
-- 💾&nbsp;Local-first support (autosaves to the browser).
+- 💾&nbsp;Local-first support (autosaves to the browser or to a MySQL database).
+- 🔑&nbsp;Sign in without email/password: the account is a 12-word login key.
 - 🔗&nbsp;Shareable links (export to a readonly link you can share with others).
 
 We'll be adding these features as drop-in plugins for the npm package in the future.
@@ -94,6 +93,55 @@ yarn add react react-dom @excalidraw/excalidraw
 
 Check out our [documentation](https://docs.excalidraw.com/docs/@excalidraw/excalidraw/installation) for more details!
 
+## Persistência em MySQL
+
+Este fork guarda a cena (elementos + appState), as imagens e a biblioteca em um **MySQL**, em vez do storage do navegador.
+
+- A API de persistência vive em [`server/`](server/index.mjs) e é a única coisa que fala com o banco: o navegador chama `/api/*` no próprio origin.
+- O app usa o MySQL como storage principal e mantém uma cópia no navegador como cache/fallback: se a API estiver fora do ar as edições continuam localmente e são reenviadas quando o banco volta.
+- `VITE_APP_STORAGE=browser` restaura o comportamento antigo (só o navegador); os testes usam esse modo.
+
+Banco local (usuário `root`, sem senha — os padrões já batem com ele):
+
+```bash
+yarn start        # sobe a API (server/, porta 3017) + o dev server (com proxy de /api)
+```
+
+O endereço do app é o do dev server (`VITE_APP_PORT`, padrão 3001 — um `.env.development.local` pode trocar). A API é um detalhe interno: o navegador só chama `/api` no próprio origin, e o proxy aponta para `VITE_APP_API_PROXY_TARGET` (3017). Para subir os dois separadamente: `yarn start:api` e `yarn start:app`.
+
+Configuração, tudo opcional: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `API_HOST`, `API_PORT`. O schema (`server/schema.sql`) é aplicado sozinho na primeira conexão — inclusive criando o banco, então não há nada para preparar antes do primeiro `yarn start`.
+
+Para rodar tudo em um container único — MySQL, API e nginx dentro da mesma imagem (veja [Dockerfile](Dockerfile) e [docker/entrypoint.sh](docker/entrypoint.sh)):
+
+```bash
+docker compose up --build     # http://localhost:3000
+```
+
+O único estado que precisa sobreviver ao container é o datadir do MySQL, montado em um volume (`mysql-data:/var/lib/mysql` no compose).
+
+## Conta e chave de login
+
+Não existe email nem senha: a conta **é** uma chave de login — uma seed phrase (BIP39) de **12 palavras** gerada no navegador. Tudo é derivado dela localmente, com HKDF-SHA256; a frase nunca é enviada ao servidor:
+
+```
+frase (12 palavras)
+  └── seed (BIP39)
+        └── HKDF-SHA256
+              ├── accountId   → identificador opaco da conta
+              ├── authSecret  → credencial enviada como Bearer (o servidor guarda só o sha256)
+              ├── contentKey  → AES-GCM 256 que cifra cena, imagens e biblioteca
+              └── indexKey    → HMAC-SHA256 dos índices cegos (ids de imagens)
+```
+
+O que isso significa na prática:
+
+- **Cifra de ponta a ponta.** Cena, imagens e biblioteca vão para o banco como envelopes AES-GCM (`{ v, iv, ct }`); os ids das imagens entram como índices cegos (HMAC do id real). O servidor guarda e devolve os dados sem saber o que são — e o `aad` de cada envelope amarra o conteúdo ao dono, então um banco adulterado não consegue trocar o envelope de uma conta pelo de outra.
+- **A chave aparece uma vez.** Na criação, a frase é mostrada para anotar (com confirmação obrigatória e botão de copiar). A partir daí o servidor guarda `key_revealed_at`: a frase só é mostrada de novo para quem está logado, pelo menu → _Ver minha chave de login_.
+- **Manter conectado.** A opção (ligada por padrão) guarda a frase apenas no `localStorage` daquele navegador, o que dá login automático nas próximas visitas. Desligada, a sessão vale só para a aba atual e o próximo load pede a chave de novo.
+- **Sair** apaga a cópia local da cena daquela conta no navegador e esquece a sessão; os dados no banco continuam lá, acessíveis por quem tem a frase.
+- **Quem perde a frase perde os dados**: não há recuperação, nem no servidor.
+- `VITE_APP_STORAGE=browser` desliga as contas e volta ao storage do navegador (é o modo usado pelos testes).
+
 ## Contributing
 
 - Missing something or found a bug? [Report here](https://github.com/excalidraw/excalidraw/issues).
@@ -111,7 +159,7 @@ Check out our [documentation](https://docs.excalidraw.com/docs/@excalidraw/excal
 
 ## Sponsors & support
 
-If you like the project, you can become a sponsor at [Open Collective](https://opencollective.com/excalidraw) or use [Excalidraw+](https://plus.excalidraw.com/).
+If you like the project, you can become a sponsor at [Open Collective](https://opencollective.com/excalidraw).
 
 ## Thank you for supporting Excalidraw
 

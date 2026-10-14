@@ -3,8 +3,6 @@
     "signUp": "Sign up",
     "signIn": "Sign in",
     "upgrade": "Upgrade",
-    "tryExcalidrawPlus": "Try Excalidraw+",
-    "plusFreeTrial": "14-day free trial",
     "paste": "Paste",
     "pasteAsPlaintext": "Paste as plaintext",
     "pasteCharts": "Paste charts",
@@ -179,8 +177,6 @@
     "eyeDropper": "Pick color from canvas",
     "textToDiagram": "Text to diagram",
     "prompt": "Prompt",
-    "followUs": "Follow us",
-    "discordChat": "Discord chat",
     "zoomToFitViewport": "Zoom to fit in viewport",
     "zoomToFitSelection": "Zoom to fit selection",
     "zoomToFit": "Zoom to fit all elements",
@@ -453,13 +449,9 @@
     "disk_button": "Save to file",
     "link_title": "Shareable link",
     "link_details": "Export as a read-only link.",
-    "link_button": "Export to Link",
-    "excalidrawplus_description": "Save the scene to your Excalidraw+ workspace.",
-    "excalidrawplus_button": "Export",
-    "excalidrawplus_exportError": "Couldn't export to Excalidraw+ at this moment..."
+    "link_button": "Export to Link"
   },
   "helpDialog": {
-    "blog": "Read our blog",
     "click": "click",
     "deepSelect": "Deep select",
     "deepBoxSelect": "Deep select within box, and prevent dragging",
@@ -612,7 +604,6 @@
       "center_heading": "Your drawings are saved in your browser's storage.",
       "center_heading_line2": "Browser storage can be cleared unexpectedly.",
       "center_heading_line3": "Save your work to a file regularly to avoid losing it.",
-      "center_heading_plus": "Did you want to go to the Excalidraw+ instead?",
       "menuHint": "Export, preferences, languages, ..."
     },
     "defaults": {
@@ -645,11 +636,6 @@
         "title": "Save to disk",
         "button": "Save to disk",
         "description": "Export the scene data to a file from which you can import later."
-      },
-      "excalidrawPlus": {
-        "title": "Excalidraw+",
-        "button": "Export to Excalidraw+",
-        "description": "Save the scene to your Excalidraw+ workspace."
       }
     },
     "modal": {
@@ -724,11 +710,10 @@
       "mermaidParseError": "Mermaid syntax error"
     },
     "rateLimit": {
-      "messageLimit": "You've hit your AI limit on the free plan. Try out Excalidraw+ for more or come back tomorrow.",
+      "messageLimit": "You've hit your AI limit on the free plan. Come back tomorrow.",
       "generalRateLimit": "Hold your horses, you're too fast for us! Please wait a moment before trying again.",
       "messageLimitInputPlaceholder": "You've reached your message limit"
-    },
-    "upsellBtnLabel": "Upgrade to Plus"
+    }
   },
   "quickSearch": {
     "placeholder": "Quick search"
@@ -779,5 +764,60 @@
     "spacebar": "Space",
     "delete": "Delete",
     "mmb": "Scroll wheel"
+  },
+  "account": {
+    "loading": "Checking your session...",
+    "subtitle": "Your account is a key of 12 words: no email, no password.",
+    "description": "Everything you draw is encrypted in your browser with this key before it is saved. The server only stores encrypted data.",
+    "offlineWarning": "Offline: saving only in this browser until the server is back.",
+    "create": {
+      "title": "Create account",
+      "action": "Generate my login key",
+      "instructions": "Write down these 12 words, in order, somewhere offline.",
+      "warning": "These words are the only way to open your account. Whoever has them can read your drawings, and without them nobody can — not even the server. There is no recovery.",
+      "confirm": "I wrote down my login key",
+      "continue": "Open my account",
+      "copy": "Copy key",
+      "copied": "Copied",
+      "creating": "Creating account...",
+      "taken": "This key is already registered on this server. Use “I already have a key” to sign in."
+    },
+    "login": {
+      "title": "Sign in with your login key",
+      "description": "Type or paste your 12 words, in the original order.",
+      "placeholder": "twelve words separated by spaces",
+      "action": "Sign in",
+      "signingIn": "Checking key...",
+      "invalid": "That is not a valid login key. Check the words and their order.",
+      "unknown": "This key is not registered on this server."
+    },
+    "remember": {
+      "label": "Keep me signed in on this browser",
+      "hint": "The key stays saved here so you do not have to type it again."
+    },
+    "menu": {
+      "section": "Account",
+      "accountId": "Account",
+      "viewKey": "View my login key",
+      "remember": "Keep me signed in",
+      "logout": "Sign out",
+      "keyRevealedAt": "Key first shown on {{date}}",
+      "keyNotRevealed": "Key delivery not confirmed yet",
+      "offline": "Offline (saving in this browser)"
+    },
+    "dialog": {
+      "title": "Your login key",
+      "description": "Keep these 12 words offline. Anyone who has them can open your account.",
+      "revealedAt": "Recorded on the server: the key was delivered on {{date}}.",
+      "close": "Close"
+    },
+    "logout": {
+      "confirm": "Sign out? The local copy of your drawing is removed from this browser (it stays saved on the server, encrypted with your key).",
+      "action": "Sign out"
+    },
+    "errors": {
+      "invalidKey": "That is not a valid login key.",
+      "unknownKey": "This key is not registered on this server."
+    }
   }
 }

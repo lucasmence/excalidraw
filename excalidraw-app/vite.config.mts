@@ -17,6 +17,14 @@ export default defineConfig(({ mode }) => {
       port: Number(envVars.VITE_APP_PORT || 3000),
       // open the browser
       open: true,
+      proxy: {
+        // a API de persistência (server/index.mjs) roda em outro processo
+        "/api": {
+          target:
+            envVars.VITE_APP_API_PROXY_TARGET || "http://127.0.0.1:3001",
+          changeOrigin: true,
+        },
+      },
     },
     // We need to specify the envDir since now there are no
     //more located in parallel with the vite.config.ts file but in parent dir

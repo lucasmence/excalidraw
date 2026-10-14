@@ -32,9 +32,12 @@ interface ImportMetaEnv {
   // Enable PWA in dev server
   VITE_APP_ENABLE_PWA: string;
 
-  VITE_APP_PLUS_LP: string;
-
-  VITE_APP_PLUS_APP: string;
+  // storage: `mysql` (API, default) | `browser` (só storage do navegador)
+  VITE_APP_STORAGE: string;
+  // base da API de persistência (relativa por padrão, atendida por proxy)
+  VITE_APP_API_URL: string;
+  // para onde o dev server encaminha `/api`
+  VITE_APP_API_PROXY_TARGET: string;
 
   VITE_APP_GIT_SHA: string;
 

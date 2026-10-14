@@ -13,11 +13,22 @@ services:
       disable: true
     environment:
       - NODE_ENV=development
+      # O MySQL roda dentro do próprio container (veja docker/entrypoint.sh).
+      # Os padrões já são estes; descomente para apontar para outro banco.
+      # - DB_HOST=127.0.0.1
+      # - DB_PORT=3306
+      # - DB_USER=root
+      # - DB_PASSWORD=
+      # - DB_NAME=excalidraw
     volumes:
       - ./:/opt/node_app/app:delegated
       - ./package.json:/opt/node_app/package.json
       - ./yarn.lock:/opt/node_app/yarn.lock
       - notused:/opt/node_app/app/node_modules
+      # cena, imagens e biblioteca ficam aqui: sem o volume, tudo se perde
+      # quando o container é recriado
+      - mysql-data:/var/lib/mysql
 
 volumes:
   notused:
+  mysql-data:

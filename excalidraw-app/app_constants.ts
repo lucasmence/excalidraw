@@ -42,6 +42,12 @@ export const STORAGE_KEYS = {
   LOCAL_STORAGE_COLLAB: "excalidraw-collab",
   LOCAL_STORAGE_THEME: "excalidraw-theme",
   LOCAL_STORAGE_DEBUG: "excalidraw-debug",
+  // set when the scene couldn't be written to the API (see LocalData)
+  LOCAL_STORAGE_PENDING_SYNC: "excalidraw-pending-sync",
+  // conta logada neste navegador (ver auth/session)
+  LOCAL_STORAGE_ACCOUNT: "excalidraw-account",
+  // uso das imagens (id → último acesso), para limpar órfãs no servidor
+  LOCAL_STORAGE_FILE_USAGE: "excalidraw-file-usage",
   VERSION_DATA_STATE: "version-dataState",
   VERSION_FILES: "version-files",
 
@@ -51,11 +57,3 @@ export const STORAGE_KEYS = {
   // do not use apart from migrations
   __LEGACY_LOCAL_STORAGE_LIBRARY: "excalidraw-library",
 } as const;
-
-export const COOKIES = {
-  AUTH_STATE_COOKIE: "excplus-auth",
-} as const;
-
-export const isExcalidrawPlusSignedUser = document.cookie.includes(
-  COOKIES.AUTH_STATE_COOKIE,
-);

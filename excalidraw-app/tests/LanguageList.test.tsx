@@ -12,7 +12,7 @@ import { LanguageList } from "../app-language/LanguageList";
 import { useAppLangCode } from "../app-language/language-state";
 import { Provider } from "../app-jotai";
 
-const TEST_LANG_CODE = "fr-FR";
+const TEST_LANG_CODE = "pt-BR";
 
 const TestApp = () => {
   const [langCode] = useAppLangCode();
@@ -47,7 +47,7 @@ describe("Test LanguageList", () => {
     fireEvent.change(document.querySelector(".dropdown-select__language")!, {
       target: { value: TEST_LANG_CODE },
     });
-    // switching to French, `thin` label should no longer exist
+    // switching to pt-BR, `thin` label should no longer exist
     await waitFor(() => expect(screen.queryByTitle(/thin/i)).toBeNull());
     // reset language
     fireEvent.change(document.querySelector(".dropdown-select__language")!, {

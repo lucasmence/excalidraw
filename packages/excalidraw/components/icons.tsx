@@ -76,18 +76,6 @@ const arrowheadPreviewIconProps: Opts = {
 
 // -----------------------------------------------------------------------------
 
-// tabler-icons: present
-export const PlusPromoIcon = createIcon(
-  <g strokeWidth="1.5">
-    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-    <rect x={3} y={8} width={18} height={4} rx={1} />
-    <line x1={12} y1={8} x2={12} y2={21} />
-    <path d="M19 12v7a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-7" />
-    <path d="M7.5 8a2.5 2.5 0 0 1 0 -5a4.8 8 0 0 1 4.5 5a4.8 8 0 0 1 4.5 -5a2.5 2.5 0 0 1 0 5" />
-  </g>,
-  tablerIconProps,
-);
-
 // tabler-icons: book
 export const LibraryIcon = createIcon(
   <g strokeWidth="1.25">
@@ -719,16 +707,6 @@ export const warning = createIcon(
 export const shareIOS = createIcon(
   "M16 5l-1.42 1.42-1.59-1.59V16h-1.98V4.83L9.42 6.42 8 5l4-4 4 4zm4 5v11c0 1.1-.9 2-2 2H6c-1.11 0-2-.9-2-2V10c0-1.11.89-2 2-2h3v2H6v11h12V10h-3V8h3c1.1 0 2 .89 2 2z",
   { width: 24, height: 24 },
-);
-
-export const exportToPlus = createIcon(
-  <g strokeWidth={1.25}>
-    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-    <path d="M8 9h-1a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-8a2 2 0 0 0 -2 -2h-1" />
-    <path d="M12 14v-11" />
-    <path d="M9 6l3 -3l3 3" />
-  </g>,
-  tablerIconProps,
 );
 
 export const shareWindows = createIcon(

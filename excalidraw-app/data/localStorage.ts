@@ -7,6 +7,17 @@ import type { ExcalidrawElement } from "@excalidraw/element/types";
 import type { AppState } from "@excalidraw/excalidraw/types";
 
 import { STORAGE_KEYS } from "../app_constants";
+import { getActiveSession } from "../auth/session";
+
+/**
+ * Cena, appState e flags de sincronização são guardados por conta: dois logins
+ * no mesmo navegador não misturam dados. Sem conta (modo `browser`) as chaves
+ * ficam como sempre foram.
+ */
+export const scopedStorageKey = (key: string) => {
+  const accountId = getActiveSession()?.accountId;
+  return accountId ? `${key}:${accountId}` : key;
+};
 
 export const saveUsernameToLocalStorage = (username: string) => {
   try {
@@ -39,8 +50,12 @@ export const importFromLocalStorage = () => {
   let savedState = null;
 
   try {
-    savedElements = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_ELEMENTS);
-    savedState = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_APP_STATE);
+    savedElements = localStorage.getItem(
+      scopedStorageKey(STORAGE_KEYS.LOCAL_STORAGE_ELEMENTS),
+    );
+    savedState = localStorage.getItem(
+      scopedStorageKey(STORAGE_KEYS.LOCAL_STORAGE_APP_STATE),
+    );
   } catch (error: any) {
     // Unable to access localStorage
     console.error(error);
@@ -75,7 +90,9 @@ export const importFromLocalStorage = () => {
 
 export const getElementsStorageSize = () => {
   try {
-    const elements = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_ELEMENTS);
+    const elements = localStorage.getItem(
+      scopedStorageKey(STORAGE_KEYS.LOCAL_STORAGE_ELEMENTS),
+    );
     const elementsSize = elements?.length || 0;
     return elementsSize;
   } catch (error: any) {
@@ -86,7 +103,9 @@ export const getElementsStorageSize = () => {
 
 export const getTotalStorageSize = () => {
   try {
-    const appState = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_APP_STATE);
+    const appState = localStorage.getItem(
+      scopedStorageKey(STORAGE_KEYS.LOCAL_STORAGE_APP_STATE),
+    );
     const collab = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_COLLAB);
 
     const appStateSize = appState?.length || 0;

@@ -1,0 +1,14 @@
+{
+  "name": "@excalidraw/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "description": "API HTTP que persiste cenas, imagens e biblioteca do Excalidraw em MySQL.",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "mysql2": "^3.11.5"
+  }
+}

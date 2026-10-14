@@ -639,9 +639,6 @@ export default function ExampleApp({
           isCollaborating={isCollaborating}
           onSelect={() => window.alert("You clicked on collab button")}
         />
-        <MainMenu.Group title="Excalidraw links">
-          <MainMenu.DefaultItems.Socials />
-        </MainMenu.Group>
         <MainMenu.Separator />
         <MainMenu.ItemCustom>
           <button
