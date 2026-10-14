@@ -5,6 +5,7 @@
   "workspaces": [
     "excalidraw-app",
     "server",
+    "collab-server",
     "packages/*",
     "examples/*"
   ],
@@ -65,6 +66,7 @@
     "build:preview": "yarn --cwd ./excalidraw-app build:preview",
     "start": "node scripts/start-dev.mjs",
     "start:api": "node server/index.mjs",
+    "start:collab": "node collab-server/index.mjs",
     "start:app": "yarn --cwd ./excalidraw-app start",
     "start:production": "yarn --cwd ./excalidraw-app start:production",
     "start:example": "yarn build:packages && yarn --cwd ./examples/with-script-in-browser start",

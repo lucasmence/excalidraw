@@ -29,6 +29,50 @@ services:
       # quando o container é recriado
       - mysql-data:/var/lib/mysql
 
+  # Backplane das salas de colaboração: permite rodar mais de uma instância de
+  # `collab` e as instâncias compartilharem os eventos. Não guarda dado nenhum
+  # (nem precisa): a cena continua no MySQL do container `excalidraw`.
+  redis:
+    image: redis:7-alpine
+    container_name: excalidraw-redis
+    # sem persistência: é só backplane, se perder não perde nada
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Servidor de salas (socket.io) da colaboração em tempo real. O navegador
+  # conecta direto nele, por isso a porta é publicada no host: é ela que vai em
+  # VITE_APP_WS_SERVER_URL no build do app (veja .env.production).
+  collab:
+    build:
+      context: .
+      dockerfile: collab-server/Dockerfile
+    container_name: excalidraw-collab
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - COLLAB_PORT=3002
+      - REDIS_URL=redis://redis:6379
+      # em produção, restrinja para o domínio do app:
+      # - CORS_ORIGIN=https://excalidraw.exemplo.com
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3002/health', (res) => { res.resume(); process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
 volumes:
   notused:
   mysql-data:

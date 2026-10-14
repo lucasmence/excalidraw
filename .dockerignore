@@ -4,6 +4,7 @@
 !.eslintrc.json
 !.npmrc
 !.prettierrc
+!collab-server/
 !docker/
 !excalidraw-app/
 !package.json

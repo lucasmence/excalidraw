@@ -1,14 +1,19 @@
 /**
- * Sobe, em um único comando (`yarn start`), os dois processos do app:
+ * Sobe, em um único comando (`yarn start`), os três processos do app:
  *
  *   - a API de persistência (server/index.mjs), que fala com o MySQL, em
- *     `API_PORT` (3017 por padrão — 3001 é o dev server e 3002 a colaboração);
- *   - o dev server do Vite, em 3001, que faz proxy de `/api` para a API.
+ *     `API_PORT` (3017 por padrão — 3001 é o dev server);
+ *   - o servidor de salas da colaboração (collab-server/index.mjs), em 3002,
+ *     que é para onde o app aponta em `VITE_APP_WS_SERVER_URL`;
+ *   - o dev server do Vite, que faz proxy de `/api` para a API.
  *
  * Assim `yarn start` continua sendo o comando único de desenvolvimento: o
  * navegador só conhece `/api` no próprio origin, e quem conversa com o banco é
  * este processo Node. O proxy do Vite aponta para a mesma porta
  * (`VITE_APP_API_PROXY_TARGET` em `.env.development`).
+ *
+ * O servidor de salas roda no adapter em memória (uma instância). Para várias
+ * instâncias, veja `REDIS_URL` em collab-server/index.mjs.
  */
 import { spawn } from "node:child_process";
 import process from "node:process";
@@ -20,6 +25,13 @@ const children = [
   [
     "api",
     spawn(process.execPath, ["server/index.mjs"], {
+      stdio: "inherit",
+      env: process.env,
+    }),
+  ],
+  [
+    "collab",
+    spawn(process.execPath, ["collab-server/index.mjs"], {
       stdio: "inherit",
       env: process.env,
     }),

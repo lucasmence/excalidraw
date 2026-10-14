@@ -142,6 +142,39 @@ O que isso significa na prática:
 - **Quem perde a frase perde os dados**: não há recuperação, nem no servidor.
 - `VITE_APP_STORAGE=browser` desliga as contas e volta ao storage do navegador (é o modo usado pelos testes).
 
+## Colaboração em tempo real
+
+Várias pessoas editando a mesma cena ao vivo. São dois processos independentes:
+
+- **servidor de salas** ([`collab-server/`](collab-server/index.mjs)): relay socket.io em 3002. `yarn start` já sobe junto; sozinho é `yarn start:collab`.
+- **cliente**: o app conecta em `VITE_APP_WS_SERVER_URL` e entra na sala pelo link `#room=<roomId>,<roomKey>`.
+
+O que passa pela rede é **cifrado de ponta a ponta** (AES-GCM com a chave que vive só no hash do link) e o servidor é cego: ele não decifra nem guarda nada — quem persiste a cena é a API/MySQL. Edição e cursor são empurrados na hora (medido na máquina local: cena inteira para quem entra em ~10 ms, edição ~2 ms, cursor ~2 ms), com um re-sync completo da cena a cada 20 s (`SYNC_FULL_SCENE_INTERVAL_MS`) como rede de segurança. Não há polling.
+
+### Redis (opcional)
+
+Não é preciso Redis para um servidor de salas. Por padrão ele usa o adapter em memória do socket.io, que atende uma instância — o suficiente para um servidor único e para o desenvolvimento.
+
+Redis entra **só quando você roda mais de uma instância** (redundância/escala): como cada instância só conhece as próprias conexões, sem um backplane uma edição feita na instância A não chega em quem está na instância B. Com `REDIS_URL` o adapter Redis passa a reemitir os eventos entre as instâncias (e o balanceador precisa de sessões sticky, exigência do transporte de polling do socket.io).
+
+```bash
+# uma instância (padrão): sem Redis
+REDIS_URL= node collab-server/index.mjs
+
+# várias instâncias compartilhando as salas
+redis-server --daemonize yes
+COLLAB_PORT=3002 REDIS_URL=redis://127.0.0.1:6379 node collab-server/index.mjs
+COLLAB_PORT=3003 REDIS_URL=redis://127.0.0.1:6379 node collab-server/index.mjs
+```
+
+O `docker compose` já traz o serviço `redis` e liga o adapter no container `collab`, então ali basta escalar: `docker compose up --scale collab=3` (com um balanceador na frente, sticky).
+
+### Estado atual e limites
+
+- **Não existe interface para criar/compartilhar a sala** ainda: quem entra hoje precisa de um link `#room=<roomId>,<roomKey>` montado à mão. O componente `LiveCollaborationTrigger` existe no pacote mas não está no menu do app.
+- A cena de uma sala é **restaurada pelo Firebase** do upstream (`loadFromFirebase`) e as imagens da sala vão para lá também (`saveFilesToFirebase`), se `VITE_APP_FIREBASE_CONFIG` estiver configurado. Se o Firebase falhar ou não estiver configurado, os próprios participantes sincronizam a cena pelo socket — a edição ao vivo não depende dele.
+- Em produção, `VITE_APP_WS_SERVER_URL` precisa de um endereço alcançável pelo **navegador** (o app é servido no seu domínio, a colaboração em outro); o compose publica o servidor de salas em `localhost:3002`.
+
 ## Contributing
 
 - Missing something or found a bug? [Report here](https://github.com/excalidraw/excalidraw/issues).
