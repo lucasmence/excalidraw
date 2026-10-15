@@ -185,10 +185,43 @@ describe("AccountBoundary", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /^sign in$/i }));
     const field = await screen.findByPlaceholderText(/twelve words/i);
+
+    // a tela de login também não pode oferecer criar conta (era por aqui que o
+    // caminho reaparecia numa instância com a criação fechada)
+    expect(
+      screen.queryByRole("button", { name: /create account/i }),
+    ).toBeNull();
+    expect(
+      screen.getByText(/new ones are turned off here/i),
+    ).toBeInTheDocument();
+
     fireEvent.change(field, { target: { value: ALICE_KEY } });
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     expect(await screen.findByTestId("editor")).toBeInTheDocument();
+  });
+
+  it("só oferece criar conta depois que o servidor confirma", async () => {
+    // servidor que não responde o /api/health: sem resposta positiva, a tela
+    // não pode oferecer uma conta que a API talvez recuse
+    const fake = server.fetchMock;
+    vi.stubGlobal("fetch", async (input: any, init?: RequestInit) => {
+      if (
+        new URL(String(input), "http://localhost").pathname === "/api/health"
+      ) {
+        throw new Error("servidor fora do ar");
+      }
+      return fake(input, init);
+    });
+
+    renderApp();
+
+    expect(
+      await screen.findByText(/new ones are turned off here/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /create account/i }),
+    ).toBeNull();
   });
 
   it("não entra sozinho quando o usuário não pediu para manter conectado", async () => {

@@ -22,9 +22,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Versão do release (padrão: 1.00)"
+        description: "Versão do release"
         required: false
-        default: "1.00"
+        default: "1.01"
 
 permissions:
   contents: write

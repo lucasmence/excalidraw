@@ -260,6 +260,11 @@ const LoginAccount = ({
 export const AccountGate = ({ error }: { error: string | null }) => {
   const [mode, setMode] = useState<"welcome" | "create" | "login">("welcome");
   const [prefilledKey, setPrefilledKey] = useState("");
+  /**
+   * `false` enquanto o servidor não disser o contrário: a criação de contas só
+   * é oferecida com uma resposta positiva do `/api/health` (veja
+   * `accountCreationOpenAtom`), em qualquer das telas.
+   */
   const creationOpen = useAtomValue(accountCreationOpenAtom);
 
   if (mode === "create") {
@@ -286,13 +291,20 @@ export const AccountGate = ({ error }: { error: string | null }) => {
     return (
       <AccountScreen>
         <LoginAccount initialLoginKey={prefilledKey} />
-        <button
-          type="button"
-          className="account-link"
-          onClick={() => setMode("create")}
-        >
-          {t("account.create.title")}
-        </button>
+        {/* a criação fechada também não pode ser oferecida daqui: era por este
+            link que a tela de login mostrava "criar conta" numa instância que a
+            API só aceita entrar com a chave que já existe */}
+        {creationOpen ? (
+          <button
+            type="button"
+            className="account-link"
+            onClick={() => setMode("create")}
+          >
+            {t("account.create.title")}
+          </button>
+        ) : (
+          <p className="account-hint">{t("account.create.disabled")}</p>
+        )}
       </AccountScreen>
     );
   }

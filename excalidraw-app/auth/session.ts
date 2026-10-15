@@ -89,10 +89,14 @@ const CREATION_DISABLED_KEY = "account.errors.creationDisabled";
 export const accountAtom = atom<AccountState>({ status: "loading" });
 
 /**
- * O servidor informou que dá para criar conta? Começa em `true` (o padrão do
- * servidor) e é atualizado pelo `/api/health` no boot.
+ * O servidor informou que dá para criar conta?
+ *
+ * Começa em `false` ("não sei") de propósito: o botão de criar conta só aparece
+ * com uma resposta positiva do `/api/health`. Antes começava em `true`, então
+ * uma resposta que não chegava — ou um servidor antigo, sem esse campo —
+ * deixava a tela oferecendo uma conta que a API ia recusar.
  */
-export const accountCreationOpenAtom = atom(true);
+export const accountCreationOpenAtom = atom(false);
 
 let active: ActiveSession | null = null;
 
@@ -217,8 +221,8 @@ export const refreshAccount = async () => {
 /**
  * Pergunta ao servidor se a criação de contas está aberta — sem isso a tela de
  * entrada ofereceria criar uma conta que a API vai recusar. Não bloqueia o
- * boot: se o servidor estiver fora do ar, fica o padrão (aberto) e o erro
- * aparece na hora de criar.
+ * boot: se o servidor estiver fora do ar, o atom fica em `false` (a tela não
+ * oferece criar conta) e o erro aparece na hora de criar.
  */
 const refreshAccountCreationOpen = async () => {
   try {

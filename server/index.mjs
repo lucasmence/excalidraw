@@ -40,7 +40,10 @@
  *   API_HOST, API_PORT (padrão 3017), MAX_BODY_BYTES, DB_RETRY_ATTEMPTS,
  *   DB_RETRY_DELAY_MS
  *   ALLOW_ACCOUNT_CREATION (padrão true) — com `false`, a instância aceita uma
- *   única conta: criar só enquanto não existe nenhuma
+ *   única conta: criar só enquanto não existe nenhuma. Escrito sem diferenciar
+ *   maiúsculas e aceitando `false`, `0`, `no` e `off`, para que um `False` no
+ *   `.env` não deixe a criação aberta sem ninguém perceber (veja
+ *   parseAllowAccountCreation)
  */
 
 import http from "node:http";
@@ -68,9 +71,32 @@ const MAX_BODY_BYTES = Number(
 );
 const DB_RETRY_ATTEMPTS = Number(process.env.DB_RETRY_ATTEMPTS || 30);
 const DB_RETRY_DELAY_MS = Number(process.env.DB_RETRY_DELAY_MS || 2000);
-// `false` fecha a criação de contas: só a primeira conta do banco pode ser
-// criada (as que já existem continuam entrando normalmente)
-const ALLOW_ACCOUNT_CREATION = process.env.ALLOW_ACCOUNT_CREATION !== "false";
+/**
+ * `false` fecha a criação de contas: só a primeira conta do banco pode ser
+ * criada (as que já existem continuam entrando normalmente).
+ *
+ * A leitura é tolerante de propósito: além de `false`, valem `0`, `no` e `off`,
+ * sem diferenciar maiúsculas, e valores com espaço em volta são aceitos. Só a
+ * variável ausente (ou vazia) mantém o padrão aberto — um `ALLOW_ACCOUNT_CREATION=False`
+ * no `.env` fechava a criação no que o operador esperava, mas não aqui.
+ */
+const parseAllowAccountCreation = (value) => {
+  if (value === undefined) {
+    return true;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  return !["false", "0", "no", "off"].includes(normalized);
+};
+
+const ALLOW_ACCOUNT_CREATION = parseAllowAccountCreation(
+  process.env.ALLOW_ACCOUNT_CREATION,
+);
 
 /** ids/credenciais são base64url de 32 bytes (43 chars) */
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
@@ -576,6 +602,17 @@ const shutdown = async (signal) => {
 };
 
 const main = async () => {
+  // deixa no log o que o processo realmente entendeu da configuração: é o que
+  // responde "minha variável chegou no servidor?" no container em produção.
+  // Vem antes do banco de propósito, para aparecer mesmo com o MySQL falhando.
+  console.log(
+    `[api] criação de contas: ${
+      ALLOW_ACCOUNT_CREATION
+        ? "aberta"
+        : `fechada depois da primeira (ALLOW_ACCOUNT_CREATION=${process.env.ALLOW_ACCOUNT_CREATION})`
+    }`,
+  );
+
   await initDb();
 
   apiServer = server.listen(API_PORT, API_HOST, () => {

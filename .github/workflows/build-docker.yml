@@ -30,9 +30,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Versão da imagem (padrão: 1.00)"
+        description: "Versão da imagem"
         required: false
-        default: "1.00"
+        default: "1.01"
 
 permissions:
   contents: read

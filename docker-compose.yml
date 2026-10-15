@@ -2,25 +2,89 @@
 # é construído localmente, só o `docker pull` das imagens da versão.
 #
 #   - excalidraw        → app + API + MySQL + nginx no mesmo container (porta 80
-#                         interna), publicado em 80140;
-#   - excalidraw-collab → servidor de salas (socket.io), publicado em 80141;
+#                         interna), publicado em 20140;
+#   - excalidraw-collab → servidor de salas (socket.io), publicado em 20141;
 #   - redis             → backplane opcional para rodar mais de uma instância do
 #                         collab (não guarda dado nenhum).
 #
-# As imagens do GHCR podem ser privadas: rode `docker login ghcr.io` antes.
+# Endereços: tudo local, sem arquivo `.env`
+# -----------------------------------------
+# As duas portas ficam publicadas no host e o que o navegador precisa alcançar
+# está em 127.0.0.1:
 #
-# Atenção: o app embute `VITE_APP_WS_SERVER_URL` no bundle durante o build. Se o
-# `.env.production` do repositório apontar para `http://localhost:3002` (o padrão
-# atual), a colaboração não conecta na porta 80141 — atualize essa variável para
-# a porta publicada aqui (ex.: `http://localhost:80141`) e republique a imagem,
-# ou publique o collab também em 3002.
+#   http://127.0.0.1:20140  → app + /api
+#   http://127.0.0.1:20141  → salas de colaboração (socket.io)
+#
+# A única variável deste arquivo é `PUBLIC_HOST`, o host pelo qual o navegador
+# chega — com o valor aqui mesmo, então não existe `.env` para criar. As portas
+# são fixas e as duas URLs saem dela:
+#
+#   PUBLIC_HOST=127.0.0.1   app:    http://127.0.0.1:20140
+#                           collab: http://127.0.0.1:20141
+#
+# Para expor por fora, ponha um proxy reverso/túnel na frente apontando para
+# essas duas portas e troque `PUBLIC_HOST` pelo nome usado no navegador. Como o
+# app é um bundle estático com o endereço das salas embutido no build, quem o
+# reescreve é o entrypoint do serviço `excalidraw` (veja abaixo).
+#
+# As imagens do GHCR podem ser privadas: rode `docker login ghcr.io` antes.
 services:
   excalidraw:
-    image: ghcr.io/lucasmence/excalidraw:1.00
+    image: ghcr.io/lucasmence/excalidraw:latest
     container_name: excalidraw
     ports:
       - "20140:80"
-    restart: on-failure
+    # reinicia também depois de reboot da máquina (é a pilha que fica no ar)
+    restart: unless-stopped
+    environment:
+      # endereço do servidor de salas: é para ele que o app aponta (destino da
+      # reescrita feita no entrypoint abaixo)
+      - COLLAB_ORIGIN=http://${PUBLIC_HOST:-127.0.0.1}:20141
+      # Criação de contas, configurada aqui — não precisa de `.env`:
+      #
+      #   false  instância de um usuário só. Enquanto o banco não tiver nenhuma
+      #          conta a primeira chave ainda pode ser criada; depois disso
+      #          `POST /api/accounts` recusa e o app nem oferece o caminho
+      #          (entrar com uma chave que já existe continua funcionando).
+      #   true   reabre para várias contas.
+      #
+      # Veja ALLOW_ACCOUNT_CREATION em server/index.mjs. O estado lido pelo
+      # servidor aparece no boot: `docker compose logs excalidraw | grep criação`.
+      - ALLOW_ACCOUNT_CREATION=false
+    # O app é um bundle estático e o URL do servidor de salas é embutido nele no
+    # *build* (VITE_APP_WS_SERVER_URL, em .env.production). Como a imagem vem
+    # pronta do GHCR, o valor não pode ser trocado só por variável de ambiente —
+    # então ele é reescrito aqui, antes de o entrypoint original subir MySQL, API
+    # e nginx. O script só mexe nos .js servidos e é idempotente: se o valor
+    # embutido não estiver na lista `baked_urls`, nada é alterado e um aviso
+    # explica o que aconteceu (o app continua de pé com o valor do build).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+
+        # endereço do collab; sem ele a reescrita esvaziaria o URL do app
+        : "$${COLLAB_ORIGIN:?defina COLLAB_ORIGIN (ex.: http://127.0.0.1:20141)}"
+
+        # literais que o build pode ter embutido no bundle (veja
+        # VITE_APP_WS_SERVER_URL em .env.production). Se você publicar uma imagem
+        # com outro valor, acrescente o literal aqui.
+        baked_urls="http://localhost:3002"
+
+        for baked in $$baked_urls; do
+          find /usr/share/nginx/html -type f -name '*.js' \
+            -exec sed -i "s#$$baked#$$COLLAB_ORIGIN#g" {} +
+        done
+
+        if grep -rqF --include='*.js' "$$COLLAB_ORIGIN" /usr/share/nginx/html; then
+          echo "[compose] bundle do app apontando para $$COLLAB_ORIGIN"
+        else
+          echo "[compose] AVISO: não achei o URL do collab embutido no bundle;" \
+               "o app vai usar o valor do build e a colaboração pode não conectar" >&2
+        fi
+
+        exec /usr/local/bin/excalidraw-entrypoint
     volumes:
       # cena, imagens e biblioteca ficam aqui: sem o volume, tudo se perde
       # quando o container é recriado
@@ -44,7 +108,7 @@ services:
   # Servidor de salas (socket.io) da colaboração em tempo real. O navegador
   # conecta direto nele, por isso a porta é publicada no host.
   collab:
-    image: ghcr.io/lucasmence/excalidraw-collab:1.00
+    image: ghcr.io/lucasmence/excalidraw-collab:latest
     container_name: excalidraw-collab
     ports:
       - "20141:3002"
@@ -55,8 +119,9 @@ services:
     environment:
       - COLLAB_PORT=3002
       - REDIS_URL=redis://redis:6379
-      # em produção, restrinja para o domínio do app:
-      # - CORS_ORIGIN=https://excalidraw.exemplo.com
+      # Origem permitida: é o endereço do *app* (quem abre o socket é a página
+      # dele), não o do próprio collab. Sai do mesmo `PUBLIC_HOST`.
+      - CORS_ORIGIN=http://${PUBLIC_HOST:-127.0.0.1}:20140
     healthcheck:
       test:
         - CMD

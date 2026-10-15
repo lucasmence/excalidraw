@@ -1,3 +1,6 @@
+# Mesma pilha do docker-compose.yml, mas construída da fonte. Aqui os endereços
+# são os do próprio host (http://localhost:...), escritos no arquivo: esta pilha
+# não usa `.env` e não depende de nenhuma variável.
 services:
   excalidraw:
     build:
@@ -13,6 +16,10 @@ services:
       disable: true
     environment:
       - NODE_ENV=development
+      # destino da reescrita feita no entrypoint abaixo: nesta pilha o collab é
+      # publicado em 20141 (o build embute http://localhost:3002, que não existe
+      # aqui)
+      - COLLAB_ORIGIN=http://localhost:20141
       # O MySQL roda dentro do próprio container (veja docker/entrypoint.sh).
       # Os padrões já são estes; descomente para apontar para outro banco.
       # - DB_HOST=127.0.0.1
@@ -20,9 +27,37 @@ services:
       # - DB_USER=root
       # - DB_PASSWORD=
       # - DB_NAME=excalidraw
-      # instância de um usuário só: depois da primeira conta, criar outra é
-      # recusado (veja ALLOW_ACCOUNT_CREATION em server/index.mjs)
-      # - ALLOW_ACCOUNT_CREATION=false
+      # Instância de um usuário só: a primeira conta ainda é criada, depois
+      # disso `POST /api/accounts` recusa (veja ALLOW_ACCOUNT_CREATION em
+      # server/index.mjs). `true` reabre para várias contas — é aqui que se
+      # muda, não existe `.env` nesta pilha.
+      - ALLOW_ACCOUNT_CREATION=false
+    # O URL do servidor de salas é embutido no bundle durante o build
+    # (VITE_APP_WS_SERVER_URL, em .env.production), então aqui ele é reescrito no
+    # start do container — a explicação completa está no docker-compose.yml.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+
+        : "$${COLLAB_ORIGIN:?defina COLLAB_ORIGIN (ex.: http://localhost:20141)}"
+
+        baked_urls="http://localhost:3002"
+
+        for baked in $$baked_urls; do
+          find /usr/share/nginx/html -type f -name '*.js' \
+            -exec sed -i "s#$$baked#$$COLLAB_ORIGIN#g" {} +
+        done
+
+        if grep -rqF --include='*.js' "$$COLLAB_ORIGIN" /usr/share/nginx/html; then
+          echo "[compose] bundle do app apontando para $$COLLAB_ORIGIN"
+        else
+          echo "[compose] AVISO: não achei o URL do collab embutido no bundle;" \
+               "o app vai usar o valor do build e a colaboração pode não conectar" >&2
+        fi
+
+        exec /usr/local/bin/excalidraw-entrypoint
     volumes:
       - ./:/opt/node_app/app:delegated
       - ./package.json:/opt/node_app/package.json
@@ -48,8 +83,8 @@ services:
       retries: 5
 
   # Servidor de salas (socket.io) da colaboração em tempo real. O navegador
-  # conecta direto nele, por isso a porta é publicada no host: é ela que vai em
-  # VITE_APP_WS_SERVER_URL no build do app (veja .env.production).
+  # conecta direto nele, por isso a porta é publicada no host: é ela que o app
+  # procura aqui (veja o COLLAB_ORIGIN do serviço `excalidraw`, logo acima).
   collab:
     build:
       context: .
@@ -64,8 +99,8 @@ services:
     environment:
       - COLLAB_PORT=3002
       - REDIS_URL=redis://redis:6379
-      # em produção, restrinja para o domínio do app:
-      # - CORS_ORIGIN=https://excalidraw.exemplo.com
+      # só a origem do app abre o socket (veja PUBLIC_HOST no docker-compose.yml)
+      - CORS_ORIGIN=http://localhost:20140
     healthcheck:
       test:
         - CMD
