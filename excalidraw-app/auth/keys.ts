@@ -11,7 +11,12 @@
  *                 ├── authSecret  → credencial enviada ao servidor (Bearer);
  *                 │                 o servidor guarda apenas o sha256 dela
  *                 ├── contentKey  → AES-GCM 256 que cifra cena/imagens/biblioteca
- *                 └── indexKey    → HMAC-SHA256 para os índices cegos (ids de arquivo)
+ *                 ├── indexKey    → HMAC-SHA256 para os índices cegos (ids de arquivo)
+ *                 └── collab*     → par fixo da sala de colaboração da conta
+ *
+ * A sala fixa é o par `#room=<roomId>,<roomKey>` que o app sempre abre para a
+ * conta: derivado da frase, o link é sempre o mesmo (as outras pessoas com o
+ * link caem na mesma sala) e a chave nunca sai do hash da URL.
  *
  * Consequência: quem tem a frase tem os dados; quem não tem, não tem — nem o
  * servidor, que só armazena envelopes cifrados.
@@ -32,6 +37,14 @@ const LOGIN_KEY_STRENGTH = 128;
 /** salt fixo do HKDF: separa o app de qualquer outro uso da mesma frase */
 const HKDF_SALT = "excalidraw-e2ee-v1";
 
+/**
+ * Sala de colaboração fixa da conta: 128 bits de chave (viram um base64url de
+ * 22 caracteres, o formato que o link de sala e o AES-GCM do socket esperam) e
+ * 80 bits de id (mesmo tamanho de `ROOM_ID_BYTES`, em hex).
+ */
+const COLLAB_ROOM_KEY_BITS = 128;
+const COLLAB_ROOM_ID_BITS = 80;
+
 export type AccountKeys = {
   /** identificador público da conta (derivado da frase, não reversível) */
   accountId: string;
@@ -41,7 +54,15 @@ export type AccountKeys = {
   contentKey: CryptoKey;
   /** chave HMAC usada para os índices cegos */
   indexKey: CryptoKey;
+  /** id fixo da sala de colaboração da conta (hex, `[a-zA-Z0-9_-]+`) */
+  collabRoomId: string;
+  /** chave E2E da sala fixa, vai no hash do link (`#room=<id>,<key>`) */
+  collabRoomKey: string;
 };
+
+/** bytes em hex: formato aceito no `roomId` do link de sala */
+const bytesToHex = (bytes: Uint8Array) =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 
 export const generateLoginKey = () =>
   generateMnemonic(wordlist, LOGIN_KEY_STRENGTH);
@@ -76,8 +97,8 @@ export const deriveAccountKeys = async (
     "deriveBits",
   ]);
 
-  const derive = async (info: string) => {
-    const bits = await crypto.subtle.deriveBits(
+  const derive = async (info: string, bits = 256) => {
+    const derived = await crypto.subtle.deriveBits(
       {
         name: "HKDF",
         hash: "SHA-256",
@@ -85,22 +106,32 @@ export const deriveAccountKeys = async (
         info: new TextEncoder().encode(info),
       },
       baseKey,
-      256,
+      bits,
     );
-    return new Uint8Array(bits);
+    return new Uint8Array(derived);
   };
 
-  const [contentMaterial, indexMaterial, authMaterial, idMaterial] =
-    await Promise.all([
-      derive("excalidraw-e2ee/content"),
-      derive("excalidraw-e2ee/index"),
-      derive("excalidraw-e2ee/auth"),
-      derive("excalidraw-e2ee/account"),
-    ]);
+  const [
+    contentMaterial,
+    indexMaterial,
+    authMaterial,
+    idMaterial,
+    collabKeyMaterial,
+    collabRoomMaterial,
+  ] = await Promise.all([
+    derive("excalidraw-e2ee/content"),
+    derive("excalidraw-e2ee/index"),
+    derive("excalidraw-e2ee/auth"),
+    derive("excalidraw-e2ee/account"),
+    derive("excalidraw-e2ee/collab-key", COLLAB_ROOM_KEY_BITS),
+    derive("excalidraw-e2ee/collab-room", COLLAB_ROOM_ID_BITS),
+  ]);
 
   return {
     accountId: bytesToBase64Url(idMaterial),
     authSecret: bytesToBase64Url(authMaterial),
+    collabRoomId: bytesToHex(collabRoomMaterial),
+    collabRoomKey: bytesToBase64Url(collabKeyMaterial),
     contentKey: await crypto.subtle.importKey(
       "raw",
       contentMaterial,

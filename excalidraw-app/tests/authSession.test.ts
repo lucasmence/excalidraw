@@ -4,6 +4,7 @@ import {
   accountCreationOpenAtom,
   bindAccountStore,
   bootstrapAccount,
+  collabRoomOf,
   createAccount,
   getActiveSession,
   login,
@@ -14,6 +15,7 @@ import {
   refreshAccount,
   rememberSession,
 } from "../auth/session";
+import { deriveAccountKeys } from "../auth/keys";
 import { appJotaiStore } from "../app-jotai";
 import { STORAGE_KEYS } from "../app_constants";
 import { ApiError } from "../data/apiClient";
@@ -64,6 +66,21 @@ describe("sessão da conta", () => {
     expect(server.calls.some((call) => call.path === "/api/accounts")).toBe(
       true,
     );
+  });
+
+  it("expõe a sala fixa da conta ativa e some no logout", async () => {
+    expect(collabRoomOf()).toBeNull();
+
+    await createAccount({ loginKey: ALICE_KEY, remember: false });
+
+    const { collabRoomId, collabRoomKey } = await deriveAccountKeys(ALICE_KEY);
+    expect(collabRoomOf()).toEqual({
+      roomId: collabRoomId,
+      roomKey: collabRoomKey,
+    });
+
+    logout();
+    expect(collabRoomOf()).toBeNull();
   });
 
   it("recusa criar a segunda conta quando o servidor só aceita a primeira", async () => {

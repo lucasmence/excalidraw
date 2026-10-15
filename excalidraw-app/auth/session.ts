@@ -108,6 +108,19 @@ export const requireActiveSession = () => {
 
 export const loginKeyOf = () => active?.loginKey ?? null;
 
+/**
+ * Sala de colaboração fixa da conta ativa: o app sempre abre essa sala, e como
+ * o par vem da frase o link é sempre o mesmo. `null` quando não há conta (nos
+ * testes/dev com `VITE_APP_STORAGE=browser` não existe sala automática).
+ */
+export const collabRoomOf = (): { roomId: string; roomKey: string } | null =>
+  active
+    ? {
+        roomId: active.keys.collabRoomId,
+        roomKey: active.keys.collabRoomKey,
+      }
+    : null;
+
 // -----------------------------------------------------------------------------
 // storage do navegador
 // -----------------------------------------------------------------------------

@@ -87,6 +87,39 @@ describe("derivação da conta", () => {
   });
 });
 
+describe("sala fixa de colaboração", () => {
+  it("deriva a mesma sala para a mesma frase", async () => {
+    const first = await deriveAccountKeys(KNOWN_LOGIN_KEY);
+    const second = await deriveAccountKeys(`  ${KNOWN_LOGIN_KEY}  `);
+
+    expect(second.collabRoomId).toBe(first.collabRoomId);
+    expect(second.collabRoomKey).toBe(first.collabRoomKey);
+  });
+
+  it("usa salas diferentes para frases diferentes", async () => {
+    const first = await deriveAccountKeys(KNOWN_LOGIN_KEY);
+    const second = await deriveAccountKeys(generateLoginKey());
+
+    expect(second.collabRoomId).not.toBe(first.collabRoomId);
+    expect(second.collabRoomKey).not.toBe(first.collabRoomKey);
+  });
+
+  it("gera id e chave no formato que o link de sala espera", async () => {
+    const { collabRoomId, collabRoomKey } = await deriveAccountKeys(
+      KNOWN_LOGIN_KEY,
+    );
+
+    // id em hex, no mesmo formato do `roomId` gerado pelo app
+    expect(collabRoomId).toMatch(/^[0-9a-f]{20}$/);
+    // chave base64url de 16 bytes = 22 caracteres (o tamanho validado no app)
+    expect(collabRoomKey).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    // o hash que o app monta é aceito pelo próprio parser do link de sala
+    expect(`#room=${collabRoomId},${collabRoomKey}`).toMatch(
+      /^#room=([a-zA-Z0-9_-]+),([a-zA-Z0-9_-]+)$/,
+    );
+  });
+});
+
 describe("envelopes cifrados", () => {
   it("cifra e decifra preservando o conteúdo", async () => {
     const { contentKey, accountId } = await deriveAccountKeys(KNOWN_LOGIN_KEY);

@@ -249,4 +249,40 @@ describe("collaboration", () => {
       ]);
     });
   });
+
+  it("sala fixa: abre mantendo a cena e publica o link na URL", async () => {
+    // os testes acima deixam uma sala na URL; aqui queremos começar do zero
+    window.history.replaceState({}, "", "/");
+
+    await render(<ExcalidrawApp />);
+
+    const rect = API.createElement({
+      type: "rectangle",
+      id: "A",
+      width: 100,
+      height: 100,
+    });
+    API.updateScene({
+      elements: [rect],
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+
+    // sala fixa da conta: id em hex e chave de 22 caracteres, como o par
+    // derivado da frase de login
+    await act(async () => {
+      window.collab.startCollaboration(
+        { roomId: "0123456789abcdef", roomKey: "0123456789abcdefghijkl" },
+        { keepScene: true, replaceHistory: true },
+      );
+    });
+
+    await waitFor(() => {
+      expect(window.location.href).toContain(
+        "#room=0123456789abcdef,0123456789abcdefghijkl",
+      );
+    });
+
+    // a sala fixa não descarta a cena que está na tela
+    expect(h.elements.map((element) => element.id)).toEqual(["A"]);
+  });
 });

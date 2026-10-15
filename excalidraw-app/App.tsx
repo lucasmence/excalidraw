@@ -89,6 +89,7 @@ import Collab, {
 } from "./collab/Collab";
 import { AccountBoundary } from "./account/AccountBoundary";
 import { AccountDialog } from "./account/AccountDialog";
+import { collabRoomOf } from "./auth/session";
 import { AppFooter } from "./components/AppFooter";
 import { AppMainMenu } from "./components/AppMainMenu";
 import { AppWelcomeScreen } from "./components/AppWelcomeScreen";
@@ -309,7 +310,26 @@ const initializeScene = async (opts: {
     }
   }
 
-  if (roomLinkData && opts.collabAPI) {
+  // Sala fixa da conta: o app sempre abre essa sala. Quando o link da URL é o
+  // nosso, tratamos como "abrir" (mantém a cena), não como "entrar" (que
+  // descartaria a cena para buscar a da sala). A conexão é disparada em segundo
+  // plano, sem bloquear o carregamento do editor.
+  const ownRoom = collabRoomOf();
+  const isOwnRoom =
+    !!ownRoom && !!roomLinkData && roomLinkData.roomId === ownRoom.roomId;
+
+  if (opts.collabAPI && ownRoom && (isOwnRoom || !roomLinkData)) {
+    opts.collabAPI
+      .startCollaboration(ownRoom, { keepScene: true, replaceHistory: true })
+      .catch((error) => {
+        console.error(
+          "[collab] não consegui abrir a sala fixa da conta",
+          error,
+        );
+      });
+  }
+
+  if (roomLinkData && opts.collabAPI && !isOwnRoom) {
     const { excalidrawAPI } = opts;
 
     const scene = await opts.collabAPI.startCollaboration(roomLinkData);

@@ -1,0 +1,95 @@
+# Cria o GitHub Release e a tag git da versão do projeto.
+#
+# Dispara a cada push no master: na primeira vez cria a tag `v<versão>` e o
+# release; nos pushes seguintes, como o release já existe, não faz nada (fica
+# barato e idempotente). Também dá para disparar na mão (Actions → Release →
+# Run workflow) escolhendo a versão.
+#
+# A versão vem nesta ordem: input do disparo manual → variável do repositório
+# `RELEASE_VERSION` (Settings → Secrets and variables → Actions → Variables) →
+# `1.00`. O `build-docker.yml` usa exatamente a mesma regra para taguear a
+# imagem, então mudar a variável no repositório muda os dois de uma vez.
+#
+# A tag é criada com o `GITHUB_TOKEN`, e pushes feitos com esse token **não**
+# disparam novos workflows — por isso a tag não dispara um build de imagem
+# duplicado no `build-docker.yml`.
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versão do release (padrão: 1.00)"
+        required: false
+        default: "1.00"
+
+permissions:
+  contents: write
+  # as notas automáticas do release listam os PRs do intervalo
+  pull-requests: read
+
+# não cancela uma execução em andamento: cada release precisa terminar
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # mesmo cálculo do build-docker.yml: mantenha os dois em sincronia
+  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.00' }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Compute version
+        id: version
+        run: |
+          set -euo pipefail
+          if ! [[ "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "versão inválida: '${RELEASE_VERSION}' (use algo como 1.00)" >&2
+            exit 1
+          fi
+          echo "version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "release ${tag} já existe: nada a fazer"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "tag ${tag} já existe no remoto"
+          else
+            git tag "${tag}"
+            git push origin "${tag}"
+          fi
+
+          gh release create "${tag}" \
+            --title "Excalidraw ${tag}" \
+            --generate-notes
+
+      - name: Summary
+        run: |
+          {
+            echo "### Release ${{ steps.version.outputs.tag }}"
+            echo ""
+            echo "Imagem publicada pelo \`build-docker.yml\`:"
+            echo ""
+            echo '```'
+            echo "ghcr.io/${GITHUB_REPOSITORY,,}:${{ steps.version.outputs.version }}"
+            echo "ghcr.io/${GITHUB_REPOSITORY,,}:latest"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

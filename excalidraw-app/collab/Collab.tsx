@@ -480,6 +480,16 @@ class Collab extends PureComponent<CollabProps, CollabState> {
 
   startCollaboration = async (
     existingRoomLinkData: null | { roomId: string; roomKey: string },
+    opts?: {
+      /**
+       * Abre a sala mantendo a cena que já está na tela (em vez de descartá-la
+       * para buscar a da sala). Usado pela sala fixa da conta, que é aberta
+       * sozinha a cada acesso.
+       */
+      keepScene?: boolean;
+      /** publica o link da sala com `replaceState` (sem criar histórico) */
+      replaceHistory?: boolean;
+    },
   ) => {
     if (!this.state.username) {
       import("@excalidraw/random-username").then(({ getRandomUsername }) => {
@@ -499,11 +509,20 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       ({ roomId, roomKey } = existingRoomLinkData);
     } else {
       ({ roomId, roomKey } = await generateCollaborationLinkData());
-      window.history.pushState(
-        {},
-        APP_NAME,
-        getCollaborationLink({ roomId, roomKey }),
-      );
+    }
+
+    // "entrar" numa sala existente descarta a cena local para usar a da sala;
+    // com `keepScene` (sala fixa da conta) a cena da tela continua valendo, e
+    // por isso a gravação no MySQL não é pausada abaixo.
+    const isJoining = !!existingRoomLinkData && !opts?.keepScene;
+
+    if (!isJoining) {
+      const roomLink = getCollaborationLink({ roomId, roomKey });
+      if (opts?.replaceHistory) {
+        window.history.replaceState({}, APP_NAME, roomLink);
+      } else {
+        window.history.pushState({}, APP_NAME, roomLink);
+      }
     }
 
     // TODO: `ImportedDataState` type here seems abused
@@ -513,7 +532,9 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     >();
 
     this.setIsCollaborating(true);
-    LocalData.pauseSave("collaboration");
+    if (!opts?.keepScene) {
+      LocalData.pauseSave("collaboration");
+    }
 
     const { default: socketIOClient } = await import(
       /* webpackChunkName: "socketIoClient" */ "socket.io-client"
@@ -521,7 +542,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
 
     const fallbackInitializationHandler = () => {
       this.initializeRoom({
-        roomLinkData: existingRoomLinkData,
+        roomLinkData: isJoining ? existingRoomLinkData : null,
         fetchScene: true,
       }).then((scene) => {
         scenePromise.resolve(scene);
@@ -545,10 +566,10 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       return null;
     }
 
-    if (existingRoomLinkData) {
+    if (isJoining) {
       // when joining existing room, don't merge it with current scene data
       this.excalidrawAPI.resetScene();
-    } else {
+    } else if (!opts?.keepScene) {
       const elements = this.excalidrawAPI.getSceneElements().map((element) => {
         if (isImageElement(element) && element.status === "saved") {
           return newElementWith(element, { status: "pending" });
@@ -690,7 +711,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       }
       const sceneData = await this.initializeRoom({
         fetchScene: true,
-        roomLinkData: existingRoomLinkData,
+        roomLinkData: isJoining ? existingRoomLinkData : null,
       });
       scenePromise.resolve(sceneData);
     });
