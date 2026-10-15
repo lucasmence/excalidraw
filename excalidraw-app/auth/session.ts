@@ -14,7 +14,7 @@
  * `keyRevealedAt` é o registro, no servidor, de que a chave já foi entregue uma
  * vez: depois disso ela só aparece de novo para quem está logado.
  */
-import { atom } from "../app-jotai";
+import { appJotaiStore, atom } from "../app-jotai";
 import { STORAGE_KEYS } from "../app_constants";
 
 import {
@@ -72,7 +72,27 @@ export class LoginKeyTakenError extends Error {
   }
 }
 
+/**
+ * Instância com a criação fechada (`ALLOW_ACCOUNT_CREATION=false`): já existe
+ * uma conta, então a única saída é entrar com a chave dela.
+ */
+export class AccountCreationDisabledError extends Error {
+  constructor() {
+    super("Account creation is disabled");
+    this.name = "AccountCreationDisabledError";
+  }
+}
+
+/** chave que a API devolve em `POST /accounts` quando a criação está fechada */
+const CREATION_DISABLED_KEY = "account.errors.creationDisabled";
+
 export const accountAtom = atom<AccountState>({ status: "loading" });
+
+/**
+ * O servidor informou que dá para criar conta? Começa em `true` (o padrão do
+ * servidor) e é atualizado pelo `/api/health` no boot.
+ */
+export const accountCreationOpenAtom = atom(true);
 
 let active: ActiveSession | null = null;
 
@@ -181,11 +201,38 @@ export const refreshAccount = async () => {
   }
 };
 
+/**
+ * Pergunta ao servidor se a criação de contas está aberta — sem isso a tela de
+ * entrada ofereceria criar uma conta que a API vai recusar. Não bloqueia o
+ * boot: se o servidor estiver fora do ar, fica o padrão (aberto) e o erro
+ * aparece na hora de criar.
+ */
+const refreshAccountCreationOpen = async () => {
+  try {
+    const health = await api.get<{ accountCreationOpen?: boolean }>(
+      "/health",
+      null,
+      AUTH_TIMEOUT_MS,
+    );
+
+    if (typeof health?.accountCreationOpen === "boolean") {
+      appJotaiStore.set(accountCreationOpenAtom, health.accountCreationOpen);
+    }
+  } catch (error) {
+    console.warn(
+      "[account] não consegui saber se a criação de contas está aberta",
+      error,
+    );
+  }
+};
+
 export const bootstrapAccount = async () => {
   if (!isRemoteStorageEnabled()) {
     setAccountState({ status: "disabled" });
     return;
   }
+
+  void refreshAccountCreationOpen();
 
   const stored = readStoredAccount();
 
@@ -252,6 +299,12 @@ export const createAccount = async ({
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) {
       throw new LoginKeyTakenError();
+    }
+    if (
+      error instanceof ApiError &&
+      error.message.includes(CREATION_DISABLED_KEY)
+    ) {
+      throw new AccountCreationDisabledError();
     }
     throw error;
   }

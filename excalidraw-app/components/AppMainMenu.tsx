@@ -8,6 +8,9 @@ import type { Theme } from "@excalidraw/element/types";
 
 import { LanguageList } from "../app-language/LanguageList";
 import { AccountMenuItems } from "../account/AccountMenuItems";
+import { useAtomValue, useSetAtom } from "../app-jotai";
+import { isCollaboratingAtom } from "../collab/Collab";
+import { roomDialogAtom } from "../collab/room-state";
 
 import { saveDebugState } from "./DebugCanvas";
 
@@ -15,6 +18,9 @@ export const AppMainMenu: React.FC<{
   theme: Theme | "system";
   refresh: () => void;
 }> = React.memo((props) => {
+  const isCollaborating = useAtomValue(isCollaboratingAtom);
+  const setRoomDialogOpen = useSetAtom(roomDialogAtom);
+
   return (
     <MainMenu>
       <MainMenu.DefaultItems.LoadScene />
@@ -23,6 +29,12 @@ export const AppMainMenu: React.FC<{
       <MainMenu.DefaultItems.SaveAsImage />
       <MainMenu.DefaultItems.CommandPalette className="highlighted" />
       <MainMenu.DefaultItems.SearchMenu />
+      {/* a sala é criada/compartilhada neste diálogo, renderizado fora do menu
+          (veja `RoomDialog`): o conteúdo do menu é desmontado ao selecionar */}
+      <MainMenu.DefaultItems.LiveCollaborationTrigger
+        isCollaborating={isCollaborating}
+        onSelect={() => setRoomDialogOpen(true)}
+      />
       <MainMenu.DefaultItems.Help />
       <MainMenu.DefaultItems.ClearCanvas />
       {isDevEnv() && (

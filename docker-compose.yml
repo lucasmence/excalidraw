@@ -20,6 +20,9 @@ services:
       # - DB_USER=root
       # - DB_PASSWORD=
       # - DB_NAME=excalidraw
+      # instância de um usuário só: depois da primeira conta, criar outra é
+      # recusado (veja ALLOW_ACCOUNT_CREATION em server/index.mjs)
+      # - ALLOW_ACCOUNT_CREATION=false
     volumes:
       - ./:/opt/node_app/app:delegated
       - ./package.json:/opt/node_app/package.json

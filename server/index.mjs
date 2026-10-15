@@ -19,7 +19,7 @@
  *
  * Endpoints
  * ---------
- *   GET    /api/health                    -> { ok, storage }
+ *   GET    /api/health                    -> { ok, storage, accountCreationOpen }
  *
  *   POST   /api/accounts                  -> cria a conta  body: { accountId, authSecret }
  *   POST   /api/session                   -> valida  body: { accountId, authSecret }
@@ -39,6 +39,8 @@
  *   DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
  *   API_HOST, API_PORT (padrão 3017), MAX_BODY_BYTES, DB_RETRY_ATTEMPTS,
  *   DB_RETRY_DELAY_MS
+ *   ALLOW_ACCOUNT_CREATION (padrão true) — com `false`, a instância aceita uma
+ *   única conta: criar só enquanto não existe nenhuma
  */
 
 import http from "node:http";
@@ -66,6 +68,9 @@ const MAX_BODY_BYTES = Number(
 );
 const DB_RETRY_ATTEMPTS = Number(process.env.DB_RETRY_ATTEMPTS || 30);
 const DB_RETRY_DELAY_MS = Number(process.env.DB_RETRY_DELAY_MS || 2000);
+// `false` fecha a criação de contas: só a primeira conta do banco pode ser
+// criada (as que já existem continuam entrando normalmente)
+const ALLOW_ACCOUNT_CREATION = process.env.ALLOW_ACCOUNT_CREATION !== "false";
 
 /** ids/credenciais são base64url de 32 bytes (43 chars) */
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
@@ -245,6 +250,26 @@ const parseKeys = (raw) => {
 };
 
 // -----------------------------------------------------------------------------
+// configuração da instância
+// -----------------------------------------------------------------------------
+
+/**
+ * A criação de contas está aberta? Por padrão está. Com
+ * `ALLOW_ACCOUNT_CREATION=false` a instância é de um usuário só: enquanto o
+ * banco não tiver nenhuma conta, a primeira pode ser criada; depois disso,
+ * `POST /api/accounts` passa a responder 403 (entrar com uma chave que já
+ * existe continua funcionando).
+ */
+const isAccountCreationOpen = async () => {
+  if (ALLOW_ACCOUNT_CREATION) {
+    return true;
+  }
+
+  const [rows] = await pool.query("SELECT COUNT(*) AS total FROM accounts");
+  return Number(rows[0].total) === 0;
+};
+
+// -----------------------------------------------------------------------------
 // autenticação
 // -----------------------------------------------------------------------------
 
@@ -275,6 +300,11 @@ const authenticate = async (req) => {
 const handleCreateAccount = async (body) => {
   const accountId = asToken(body?.accountId, "accountId");
   const authSecret = asToken(body?.authSecret, "authSecret");
+
+  if (!(await isAccountCreationOpen())) {
+    // o cliente usa a chave para mostrar a mensagem traduzida
+    throw httpError(403, "account.errors.creationDisabled");
+  }
 
   const [existing] = await pool.execute(
     "SELECT id FROM accounts WHERE id = ? OR auth_hash = ?",
@@ -472,7 +502,14 @@ const handlePutLibrary = async (account, body) => {
 
 const handleHealth = async () => {
   await pool.query("SELECT 1");
-  return { status: 200, payload: { ok: true, storage: "mysql" } };
+  return {
+    status: 200,
+    payload: {
+      ok: true,
+      storage: "mysql",
+      accountCreationOpen: await isAccountCreationOpen(),
+    },
+  };
 };
 
 // -----------------------------------------------------------------------------

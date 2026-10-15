@@ -169,6 +169,28 @@ describe("AccountBoundary", () => {
     ).not.toBeNull();
   });
 
+  it("não oferece criar conta quando o servidor só aceita a primeira", async () => {
+    server = createFakeApiServer({ allowAccountCreation: false });
+    // a conta que já existe continua entrando normalmente
+    await givenRegisteredAccount(false);
+
+    renderApp();
+
+    expect(
+      await screen.findByText(/new ones are turned off here/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /create account/i }),
+    ).toBeNull();
+
+    fireEvent.click(await screen.findByRole("button", { name: /^sign in$/i }));
+    const field = await screen.findByPlaceholderText(/twelve words/i);
+    fireEvent.change(field, { target: { value: ALICE_KEY } });
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(await screen.findByTestId("editor")).toBeInTheDocument();
+  });
+
   it("não entra sozinho quando o usuário não pediu para manter conectado", async () => {
     await createAccount({ loginKey: ALICE_KEY, remember: false });
     await markLoginKeyRevealed();

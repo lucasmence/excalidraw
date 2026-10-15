@@ -1,9 +1,12 @@
 import { t } from "@excalidraw/excalidraw/i18n";
 import React, { useState } from "react";
 
+import { useAtomValue } from "../app-jotai";
 import { STORAGE_KEYS } from "../app_constants";
 import { generateLoginKey, isValidLoginKey } from "../auth/keys";
 import {
+  AccountCreationDisabledError,
+  accountCreationOpenAtom,
   createAccount,
   login,
   LoginKeyTakenError,
@@ -50,6 +53,9 @@ export const AccountScreen = ({ children }: { children: React.ReactNode }) => (
 const describeAccountError = (error: unknown) => {
   if (error instanceof LoginKeyTakenError) {
     return t("account.create.taken");
+  }
+  if (error instanceof AccountCreationDisabledError) {
+    return t("account.create.disabled");
   }
   if (error instanceof ApiError && error.status === 401) {
     return t("account.login.unknown");
@@ -248,6 +254,7 @@ const LoginAccount = ({
 export const AccountGate = ({ error }: { error: string | null }) => {
   const [mode, setMode] = useState<"welcome" | "create" | "login">("welcome");
   const [prefilledKey, setPrefilledKey] = useState("");
+  const creationOpen = useAtomValue(accountCreationOpenAtom);
 
   if (mode === "create") {
     return (
@@ -289,13 +296,17 @@ export const AccountGate = ({ error }: { error: string | null }) => {
       <h1 className="account-card__title">{t("account.subtitle")}</h1>
       <p className="account-card__text">{t("account.description")}</p>
 
-      <button
-        type="button"
-        className="account-button"
-        onClick={() => setMode("create")}
-      >
-        {t("account.create.title")}
-      </button>
+      {creationOpen ? (
+        <button
+          type="button"
+          className="account-button"
+          onClick={() => setMode("create")}
+        >
+          {t("account.create.title")}
+        </button>
+      ) : (
+        <p className="account-hint">{t("account.create.disabled")}</p>
+      )}
       <button
         type="button"
         className="account-button account-button--ghost"

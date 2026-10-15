@@ -272,7 +272,7 @@
     "decryptFailed": "Não foi possível descriptografar os dados.",
     "uploadedSecurly": "O upload foi protegido com criptografia de ponta a ponta, o que significa que o servidor do Excalidraw e terceiros não podem ler o conteúdo.",
     "loadSceneOverridePrompt": "Carregar um desenho externo substituirá o seu conteúdo existente. Deseja continuar?",
-    "collabStopOverridePrompt": "Ao interromper a sessão, você substituirá seu desenho anterior, armazenado localmente. Você tem certeza?\n\n(Se você deseja manter seu desenho local, simplesmente feche a aba do navegador.)",
+    "collabStopOverridePrompt": "Encerrar a sessão desconecta você da sala. Esta cena continua na sua tela e volta a ser salva na sua conta. Tem certeza?",
     "errorAddingToLibrary": "Não foi possível adicionar o item à biblioteca",
     "errorRemovingFromLibrary": "Não foi possível remover o item da biblioteca",
     "confirmAddLibrary": "Isso adicionará {{numShapes}} forma(s) à sua biblioteca. Tem certeza?",
@@ -420,7 +420,11 @@
     "desc_inProgressIntro": "A sessão de colaboração ao vivo está agora em andamento.",
     "desc_shareLink": "Compartilhe este link com qualquer pessoa com quem você queira colaborar:",
     "desc_exitSession": "Interrompendo a sessão você irá se desconectar da sala, mas você poderá continuar trabalhando com a cena localmente. Observe que isso não afetará outras pessoas, e elas ainda poderão colaborar em suas versões.",
-    "shareTitle": "Participe de uma sessão ao vivo de colaboração no Excalidraw"
+    "shareTitle": "Participe de uma sessão ao vivo de colaboração no Excalidraw",
+    "title": "Colaboração ao vivo",
+    "linkLabel": "Link da sala",
+    "button_copyLink": "Copiar link",
+    "button_linkCopied": "Link copiado"
   },
   "errorDialog": {
     "title": "Erro"
@@ -754,7 +758,8 @@
       "copy": "Copiar chave",
       "copied": "Copiada",
       "creating": "Criando conta...",
-      "taken": "Esta chave já está registrada neste servidor. Use “Já tenho uma chave” para entrar."
+      "taken": "Esta chave já está registrada neste servidor. Use “Já tenho uma chave” para entrar.",
+      "disabled": "Este servidor já tem uma conta, e a criação de novas está desligada aqui. Entre com a chave que você já tem."
     },
     "login": {
       "title": "Entrar com sua chave de login",

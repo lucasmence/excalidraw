@@ -1,6 +1,9 @@
 import {
   type AccountState,
+  AccountCreationDisabledError,
+  accountCreationOpenAtom,
   bindAccountStore,
+  bootstrapAccount,
   createAccount,
   getActiveSession,
   login,
@@ -11,6 +14,7 @@ import {
   refreshAccount,
   rememberSession,
 } from "../auth/session";
+import { appJotaiStore } from "../app-jotai";
 import { STORAGE_KEYS } from "../app_constants";
 import { ApiError } from "../data/apiClient";
 
@@ -39,6 +43,7 @@ beforeEach(() => {
   vi.stubEnv("VITE_APP_STORAGE", "mysql");
   server = createFakeApiServer();
   states = [];
+  appJotaiStore.set(accountCreationOpenAtom, true);
   bindAccountStore((state: AccountState) => states.push(state));
 });
 
@@ -59,6 +64,45 @@ describe("sessão da conta", () => {
     expect(server.calls.some((call) => call.path === "/api/accounts")).toBe(
       true,
     );
+  });
+
+  it("recusa criar a segunda conta quando o servidor só aceita a primeira", async () => {
+    server = createFakeApiServer({ allowAccountCreation: false });
+
+    await createAccount({ loginKey: ALICE_KEY, remember: false });
+    logout();
+
+    await expect(
+      createAccount({ loginKey: BOB_KEY, remember: false }),
+    ).rejects.toBeInstanceOf(AccountCreationDisabledError);
+    // nenhuma conta nova foi criada e a chave que existia continua entrando
+    expect(server.accounts.size).toBe(1);
+    await expect(
+      login({ loginKey: ALICE_KEY, remember: false }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("descobre pelo servidor que a criação de contas está fechada", async () => {
+    server = createFakeApiServer({ allowAccountCreation: false });
+    await createAccount({ loginKey: ALICE_KEY, remember: false });
+    logout();
+
+    await bootstrapAccount();
+
+    await vi.waitFor(() =>
+      expect(appJotaiStore.get(accountCreationOpenAtom)).toBe(false),
+    );
+  });
+
+  it("volta a permitir a criação quando o servidor reabre", async () => {
+    appJotaiStore.set(accountCreationOpenAtom, false);
+
+    await bootstrapAccount();
+
+    await vi.waitFor(() =>
+      expect(appJotaiStore.get(accountCreationOpenAtom)).toBe(true),
+    );
+    expect(server.calls.some((call) => call.path === "/api/health")).toBe(true);
   });
 
   it("recusa uma chave que já está registrada", async () => {

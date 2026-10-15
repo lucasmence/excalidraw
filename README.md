@@ -109,7 +109,7 @@ yarn start        # sobe a API (server/, porta 3017) + o dev server (com proxy d
 
 O endereço do app é o do dev server (`VITE_APP_PORT`, padrão 3001 — um `.env.development.local` pode trocar). A API é um detalhe interno: o navegador só chama `/api` no próprio origin, e o proxy aponta para `VITE_APP_API_PROXY_TARGET` (3017). Para subir os dois separadamente: `yarn start:api` e `yarn start:app`.
 
-Configuração, tudo opcional: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `API_HOST`, `API_PORT`. O schema (`server/schema.sql`) é aplicado sozinho na primeira conexão — inclusive criando o banco, então não há nada para preparar antes do primeiro `yarn start`.
+Configuração, tudo opcional: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `API_HOST`, `API_PORT`, `ALLOW_ACCOUNT_CREATION`. Em desenvolvimento elas saem do `.env.development` (o `yarn start` passa o arquivo para o processo da API; o dev server do Vite lê o mesmo arquivo para as `VITE_APP_*`). O schema (`server/schema.sql`) é aplicado sozinho na primeira conexão — inclusive criando o banco, então não há nada para preparar antes do primeiro `yarn start`.
 
 Para rodar tudo em um container único — MySQL, API e nginx dentro da mesma imagem (veja [Dockerfile](Dockerfile) e [docker/entrypoint.sh](docker/entrypoint.sh)):
 
@@ -139,6 +139,7 @@ O que isso significa na prática:
 - **A chave aparece uma vez.** Na criação, a frase é mostrada para anotar (com confirmação obrigatória e botão de copiar). A partir daí o servidor guarda `key_revealed_at`: a frase só é mostrada de novo para quem está logado, pelo menu → _Ver minha chave de login_.
 - **Manter conectado.** A opção (ligada por padrão) guarda a frase apenas no `localStorage` daquele navegador, o que dá login automático nas próximas visitas. Desligada, a sessão vale só para a aba atual e o próximo load pede a chave de novo.
 - **Sair** apaga a cópia local da cena daquela conta no navegador e esquece a sessão; os dados no banco continuam lá, acessíveis por quem tem a frase.
+- **Instância de um usuário só.** `ALLOW_ACCOUNT_CREATION=false` (no `.env.development`, ou no ambiente do container) fecha a criação de contas: a chave ainda pode ser criada enquanto o banco não tem nenhuma conta, e depois disso `POST /api/accounts` responde 403 — quem já tem chave continua entrando normalmente. A tela de entrada pergunta ao servidor (`GET /api/health` → `accountCreationOpen`) e, quando fechada, mostra só o _Entrar com a chave_.
 - **Quem perde a frase perde os dados**: não há recuperação, nem no servidor.
 - `VITE_APP_STORAGE=browser` desliga as contas e volta ao storage do navegador (é o modo usado pelos testes).
 
@@ -147,7 +148,8 @@ O que isso significa na prática:
 Várias pessoas editando a mesma cena ao vivo. São dois processos independentes:
 
 - **servidor de salas** ([`collab-server/`](collab-server/index.mjs)): relay socket.io em 3002. `yarn start` já sobe junto; sozinho é `yarn start:collab`.
-- **cliente**: o app conecta em `VITE_APP_WS_SERVER_URL` e entra na sala pelo link `#room=<roomId>,<roomKey>`.
+- **criar a sala**: pelo botão de compartilhar no topo direito do editor (ou menu → _Live collaboration_ no celular). O diálogo inicia a sessão, mostra o link com botão de copiar e encerra pelo _Stop session_. Quem recebe o link entra na mesma sala.
+- **cliente**: o app conecta em `VITE_APP_WS_SERVER_URL` e entra na sala pelo link `#room=<roomId>,<roomKey>` — é a URL que o botão coloca na barra de endereços e copia.
 
 O que passa pela rede é **cifrado de ponta a ponta** (AES-GCM com a chave que vive só no hash do link) e o servidor é cego: ele não decifra nem guarda nada — quem persiste a cena é a API/MySQL. Edição e cursor são empurrados na hora (medido na máquina local: cena inteira para quem entra em ~10 ms, edição ~2 ms, cursor ~2 ms), com um re-sync completo da cena a cada 20 s (`SYNC_FULL_SCENE_INTERVAL_MS`) como rede de segurança. Não há polling.
 
@@ -171,7 +173,8 @@ O `docker compose` já traz o serviço `redis` e liga o adapter no container `co
 
 ### Estado atual e limites
 
-- **Não existe interface para criar/compartilhar a sala** ainda: quem entra hoje precisa de um link `#room=<roomId>,<roomKey>` montado à mão. O componente `LiveCollaborationTrigger` existe no pacote mas não está no menu do app.
+- A sala é criada pelo diálogo do `RoomDialog` (botão de compartilhar no topo direito / item de menu). Só entrar na sala continua sendo pelo link: não há convite por usuário nem lista de salas.
+- Enquanto a sessão está aberta, a cena **não é salva na conta** (`LocalData.pauseSave("collaboration")`): quem guarda a cena da sala é o Firebase do upstream, e a gravação no MySQL volta quando a sessão é encerrada.
 - A cena de uma sala é **restaurada pelo Firebase** do upstream (`loadFromFirebase`) e as imagens da sala vão para lá também (`saveFilesToFirebase`), se `VITE_APP_FIREBASE_CONFIG` estiver configurado. Se o Firebase falhar ou não estiver configurado, os próprios participantes sincronizam a cena pelo socket — a edição ao vivo não depende dele.
 - Em produção, `VITE_APP_WS_SERVER_URL` precisa de um endereço alcançável pelo **navegador** (o app é servido no seu domínio, a colaboração em outro); o compose publica o servidor de salas em `localhost:3002`.
 

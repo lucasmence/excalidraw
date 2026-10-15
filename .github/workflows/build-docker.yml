@@ -1,13 +1,162 @@
+# Constrói as imagens Docker do projeto e publica no GHCR (ghcr.io/<dono>/<repo>),
+# usando o `GITHUB_TOKEN` — não precisa configurar secret nenhum.
+#
+#   - `excalidraw`      → Dockerfile da raiz: app + API + MySQL + nginx no mesmo
+#                         container (veja docker/entrypoint.sh);
+#   - `excalidraw-collab` → collab-server/Dockerfile: servidor de salas.
+#
+# Tags: `sha-<curto>` sempre; `latest` no master; o nome da tag quando o push é
+# de uma tag do git. Em pull request só constrói (fork não tem permissão de
+# escrever em pacote), o que já valida o Dockerfile. Depois de publicar, o job
+# `smoke-test` sobe a imagem e confere a pilha inteira (nginx → API → MySQL).
+#
+# Obs.: o app é construído com o `.env.production` do repositório (as variáveis
+# `VITE_APP_*` do cliente são embutidas no bundle pelo Vite), então a imagem sai
+# já configurada para o que estiver lá.
 name: Build Docker image
 
 on:
   push:
     branches:
-      - release
+      - master
+    tags:
+      - "*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# um push novo cancela a execução anterior do mesmo ref (o build é caro)
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
 
 jobs:
-  build-docker:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: excalidraw
+            dockerfile: Dockerfile
+            suffix: ""
+          - name: collab
+            dockerfile: collab-server/Dockerfile
+            suffix: "-collab"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      # nomes de pacote no GHCR são sempre minúsculos: daí o `${...,,}`
+      - name: Compute image name and tags
+        id: image
+        env:
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          set -euo pipefail
+          image="${REGISTRY}/${GITHUB_REPOSITORY,,}${SUFFIX}"
+          tags="${image}:sha-${GITHUB_SHA::7}"
+          case "${GITHUB_REF}" in
+            refs/heads/master) tags="${tags},${image}:latest" ;;
+            refs/tags/*) tags="${tags},${image}:${GITHUB_REF_NAME}" ;;
+          esac
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc # v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.image.outputs.tags }}
+          # só amd64: a imagem compila o monorepo inteiro e, sob emulação, um
+          # arm64 levaria dezenas de minutos. Para publicar arm64 também, troque
+          # por `linux/amd64,linux/arm64` e acrescente o setup-qemu-action
+          # (c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3) antes do buildx.
+          platforms: linux/amd64
+          # o `yarn install` + `vite build` do Dockerfile é o que domina o tempo:
+          # o cache entre execuções evita refazer tudo a cada push
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### ${GITHUB_REF_NAME} — ${{ matrix.name }}"
+            echo ""
+            echo '```'
+            echo "${{ steps.image.outputs.tags }}" | tr ',' '\n'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # prova que a imagem publicada não só constrói: sobe a pilha (MySQL, API e
+  # nginx no mesmo container) e espera o healthcheck passar
+  smoke-test:
+    needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - run: docker build -t excalidraw .
+      - name: Login to GHCR
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc # v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the freshly built image
+        run: |
+          set -euo pipefail
+          image="${REGISTRY}/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::7}"
+          echo "IMAGE=${image}" >> "$GITHUB_ENV"
+          docker pull "${image}"
+
+      - name: Run the container
+        run: docker run --detach --name excalidraw --publish 3000:80 "$IMAGE"
+
+      # o entrypoint inicializa o MySQL no primeiro boot (datadir vazio), então
+      # o /api/health demora: mesma ordem de grandeza do start-period do
+      # HEALTHCHECK da imagem (120s)
+      - name: Wait for the stack to be healthy
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json 2>/dev/null; then
+              break
+            fi
+            echo "aguardando a API (tentativa ${attempt}/60)..."
+            sleep 5
+          done
+          cat /tmp/health.json
+          # banco recém-criado: storage MySQL e criação de contas aberta
+          grep -q '"storage":"mysql"' /tmp/health.json
+          grep -q '"accountCreationOpen":true' /tmp/health.json
+
+      - name: Check the app is served by nginx
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/index.html -w '%{http_code}' http://127.0.0.1:3000/)
+          echo "GET / -> ${code}"
+          [ "${code}" = "200" ]
+          grep -qi 'excalidraw' /tmp/index.html
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker logs excalidraw | tail -n 100

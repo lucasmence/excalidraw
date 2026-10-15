@@ -12,7 +12,14 @@ import { vi } from "vitest";
 
 type Envelope = { v: 1; iv: string; ct: string };
 
-export const createFakeApiServer = () => {
+/**
+ * `allowAccountCreation: false` imita a instância com
+ * `ALLOW_ACCOUNT_CREATION=false`: só a primeira conta pode ser criada e
+ * `/api/health` conta isso ao cliente.
+ */
+export const createFakeApiServer = ({
+  allowAccountCreation = true,
+}: { allowAccountCreation?: boolean } = {}) => {
   const accounts = new Map<
     string,
     { authSecret: string; keyRevealedAt: string | null }
@@ -44,6 +51,9 @@ export const createFakeApiServer = () => {
     return null;
   };
 
+  /** a criação segue aberta enquanto o servidor aceitar contas novas */
+  const accountCreationOpen = () => allowAccountCreation || accounts.size === 0;
+
   const filesOf = (accountId: string) => {
     if (!files.has(accountId)) {
       files.set(accountId, new Map());
@@ -61,7 +71,19 @@ export const createFakeApiServer = () => {
 
     calls.push({ method, path: `${url.pathname}${url.search}`, body });
 
+    if (url.pathname === "/api/health" && method === "GET") {
+      return ok({
+        ok: true,
+        storage: "fake",
+        accountCreationOpen: accountCreationOpen(),
+      });
+    }
+
     if (url.pathname === "/api/accounts" && method === "POST") {
+      if (!accountCreationOpen()) {
+        return error(403, "account.errors.creationDisabled");
+      }
+
       const { accountId, authSecret } = body ?? {};
       if (accounts.has(accountId)) {
         return error(409, "Account already exists");

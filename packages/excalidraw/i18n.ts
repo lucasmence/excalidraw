@@ -1,5 +1,3 @@
-import { isDevEnv } from "@excalidraw/common";
-
 import type { NestedKeyOf } from "@excalidraw/common/utility-types";
 
 import { useAtomValue, editorJotaiStore, atom } from "./editor-jotai";
@@ -29,18 +27,6 @@ export const languages: Language[] = [
     .sort((left, right) => (left.label > right.label ? 1 : -1)),
 ];
 
-const TEST_LANG_CODE = "__test__";
-if (isDevEnv()) {
-  languages.unshift(
-    { code: TEST_LANG_CODE, label: "test language" },
-    {
-      code: `${TEST_LANG_CODE}.rtl`,
-      label: "\u{202a}test language (rtl)\u{202c}",
-      rtl: true,
-    },
-  );
-}
-
 let currentLang: Language = defaultLang;
 let currentLangData = {};
 
@@ -49,15 +35,11 @@ export const setLanguage = async (lang: Language) => {
   document.documentElement.dir = currentLang.rtl ? "rtl" : "ltr";
   document.documentElement.lang = currentLang.code;
 
-  if (lang.code.startsWith(TEST_LANG_CODE)) {
-    currentLangData = {};
-  } else {
-    try {
-      currentLangData = await import(`./locales/${currentLang.code}.json`);
-    } catch (error: any) {
-      console.error(`Failed to load language ${lang.code}:`, error.message);
-      currentLangData = fallbackLangData;
-    }
+  try {
+    currentLangData = await import(`./locales/${currentLang.code}.json`);
+  } catch (error: any) {
+    console.error(`Failed to load language ${lang.code}:`, error.message);
+    currentLangData = fallbackLangData;
   }
 
   editorJotaiStore.set(editorLangCodeAtom, lang.code);
@@ -84,13 +66,6 @@ export const t = (
   replacement?: { [key: string]: string | number } | null,
   fallback?: string,
 ) => {
-  if (currentLang.code.startsWith(TEST_LANG_CODE)) {
-    const name = replacement
-      ? `${path}(${JSON.stringify(replacement).slice(1, -1)})`
-      : path;
-    return `\u{202a}[[${name}]]\u{202c}`;
-  }
-
   const parts = path.split(".");
   let translation =
     findPartsForData(currentLangData, parts) ||

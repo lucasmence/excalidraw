@@ -16,17 +16,37 @@
  * instâncias, veja `REDIS_URL` em collab-server/index.mjs.
  */
 import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import process from "node:process";
+
+import dotenv from "dotenv";
 
 /** no Windows, `yarn` é um `.cmd` e só roda via shell */
 const needsShell = process.platform === "win32";
+
+const ENV_FILE = ".env.development";
+
+/**
+ * O dev server do Vite lê `.env.development` sozinho (é onde estão as
+ * variáveis `VITE_APP_*` do cliente), mas a API é um Node puro: sem isto, uma
+ * variável de servidor no mesmo arquivo — como `ALLOW_ACCOUNT_CREATION`, que o
+ * Vite não expõe por não ter o prefixo `VITE_` — nunca chegaria nela. As
+ * variáveis do arquivo vão só para a API; os outros processos continuam
+ * herdando o ambiente como está.
+ */
+const apiEnv = {
+  ...process.env,
+  ...(existsSync(ENV_FILE)
+    ? dotenv.parse(readFileSync(ENV_FILE, "utf8"))
+    : {}),
+};
 
 const children = [
   [
     "api",
     spawn(process.execPath, ["server/index.mjs"], {
       stdio: "inherit",
-      env: process.env,
+      env: apiEnv,
     }),
   ],
   [

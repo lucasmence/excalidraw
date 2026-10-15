@@ -4,6 +4,7 @@ import {
   CaptureUpdateAction,
   reconcileElements,
   ExcalidrawAPIProvider,
+  LiveCollaborationTrigger,
   useExcalidrawAPI,
 } from "@excalidraw/excalidraw";
 import { trackEvent } from "@excalidraw/excalidraw/analytics";
@@ -71,6 +72,7 @@ import {
   Provider,
   useAtom,
   useAtomValue,
+  useSetAtom,
   useAtomWithInitialValue,
   appJotaiStore,
 } from "./app-jotai";
@@ -114,6 +116,8 @@ import {
 } from "./data/LocalData";
 import { isBrowserStorageStateNewer } from "./data/tabSync";
 import CollabError, { collabErrorIndicatorAtom } from "./collab/CollabError";
+import { RoomDialog } from "./collab/RoomDialog";
+import { roomDialogAtom } from "./collab/room-state";
 import { useHandleAppTheme } from "./useHandleAppTheme";
 import { getPreferredLanguage } from "./app-language/language-detector";
 import { useAppLangCode } from "./app-language/language-state";
@@ -388,6 +392,7 @@ const ExcalidrawWrapper = () => {
   });
   const collabError = useAtomValue(collabErrorIndicatorAtom);
   const userToFollow = useAtomValue(userToFollowAtom);
+  const setRoomDialogOpen = useSetAtom(roomDialogAtom);
 
   const viewportStatusFrame = useMemo(
     () =>
@@ -861,6 +866,13 @@ const ExcalidrawWrapper = () => {
           return (
             <div className="excalidraw-ui-top-right">
               {collabError.message && <CollabError collabError={collabError} />}
+              {/* cria a sala (ou mostra o link, já em sessão) — no celular o
+                  mesmo diálogo abre pelo menu principal */}
+              <LiveCollaborationTrigger
+                isCollaborating={isCollaborating}
+                onSelect={() => setRoomDialogOpen(true)}
+                data-testid="collab-trigger"
+              />
             </div>
           );
         }}
@@ -881,6 +893,7 @@ const ExcalidrawWrapper = () => {
         />
         {/* fora do menu: o menu é desmontado ao selecionar um item */}
         <AccountDialog />
+        <RoomDialog />
         <AppWelcomeScreen />
         <OverwriteConfirmDialog>
           <OverwriteConfirmDialog.Actions.ExportToImage />
