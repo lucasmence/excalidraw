@@ -1,3 +1,4 @@
+import { ExcalidrawLogo } from "@excalidraw/excalidraw/components/ExcalidrawLogo";
 import { t } from "@excalidraw/excalidraw/i18n";
 import React, { useState } from "react";
 
@@ -42,7 +43,12 @@ export const useAccountTheme = () => {
 
 export const AccountScreen = ({ children }: { children: React.ReactNode }) => (
   <div className="account-screen" data-theme={useAccountTheme()}>
-    <div className="account-card">{children}</div>
+    <div className="account-card">
+      <div className="account-card__logo">
+        <ExcalidrawLogo withText />
+      </div>
+      {children}
+    </div>
   </div>
 );
 
