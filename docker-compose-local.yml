@@ -6,7 +6,7 @@ services:
         - NODE_ENV=development
     container_name: excalidraw
     ports:
-      - "80140:80"
+      - "20140:80"
     restart: on-failure
     stdin_open: true
     healthcheck:
@@ -56,7 +56,7 @@ services:
       dockerfile: collab-server/Dockerfile
     container_name: excalidraw-collab
     ports:
-      - "80141:3002"
+      - "20141:3002"
     restart: unless-stopped
     depends_on:
       redis:
