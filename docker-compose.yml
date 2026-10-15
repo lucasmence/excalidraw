@@ -1,33 +1,27 @@
+# Sobe a pilha publicada no GHCR (veja .github/workflows/build-docker.yml): nada
+# é construído localmente, só o `docker pull` das imagens da versão.
+#
+#   - excalidraw        → app + API + MySQL + nginx no mesmo container (porta 80
+#                         interna), publicado em 80140;
+#   - excalidraw-collab → servidor de salas (socket.io), publicado em 80141;
+#   - redis             → backplane opcional para rodar mais de uma instância do
+#                         collab (não guarda dado nenhum).
+#
+# As imagens do GHCR podem ser privadas: rode `docker login ghcr.io` antes.
+#
+# Atenção: o app embute `VITE_APP_WS_SERVER_URL` no bundle durante o build. Se o
+# `.env.production` do repositório apontar para `http://localhost:3002` (o padrão
+# atual), a colaboração não conecta na porta 80141 — atualize essa variável para
+# a porta publicada aqui (ex.: `http://localhost:80141`) e republique a imagem,
+# ou publique o collab também em 3002.
 services:
   excalidraw:
-    build:
-      context: .
-      args:
-        - NODE_ENV=development
+    image: ghcr.io/lucasmence/excalidraw:1.00
     container_name: excalidraw
     ports:
-      - "3000:80"
+      - "80140:80"
     restart: on-failure
-    stdin_open: true
-    healthcheck:
-      disable: true
-    environment:
-      - NODE_ENV=development
-      # O MySQL roda dentro do próprio container (veja docker/entrypoint.sh).
-      # Os padrões já são estes; descomente para apontar para outro banco.
-      # - DB_HOST=127.0.0.1
-      # - DB_PORT=3306
-      # - DB_USER=root
-      # - DB_PASSWORD=
-      # - DB_NAME=excalidraw
-      # instância de um usuário só: depois da primeira conta, criar outra é
-      # recusado (veja ALLOW_ACCOUNT_CREATION em server/index.mjs)
-      # - ALLOW_ACCOUNT_CREATION=false
     volumes:
-      - ./:/opt/node_app/app:delegated
-      - ./package.json:/opt/node_app/package.json
-      - ./yarn.lock:/opt/node_app/yarn.lock
-      - notused:/opt/node_app/app/node_modules
       # cena, imagens e biblioteca ficam aqui: sem o volume, tudo se perde
       # quando o container é recriado
       - mysql-data:/var/lib/mysql
@@ -48,15 +42,12 @@ services:
       retries: 5
 
   # Servidor de salas (socket.io) da colaboração em tempo real. O navegador
-  # conecta direto nele, por isso a porta é publicada no host: é ela que vai em
-  # VITE_APP_WS_SERVER_URL no build do app (veja .env.production).
+  # conecta direto nele, por isso a porta é publicada no host.
   collab:
-    build:
-      context: .
-      dockerfile: collab-server/Dockerfile
+    image: ghcr.io/lucasmence/excalidraw-collab:1.00
     container_name: excalidraw-collab
     ports:
-      - "3002:3002"
+      - "80141:3002"
     restart: unless-stopped
     depends_on:
       redis:
@@ -77,5 +68,4 @@ services:
       retries: 5
 
 volumes:
-  notused:
   mysql-data:

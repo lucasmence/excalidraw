@@ -1,0 +1,81 @@
+services:
+  excalidraw:
+    build:
+      context: .
+      args:
+        - NODE_ENV=development
+    container_name: excalidraw
+    ports:
+      - "80140:80"
+    restart: on-failure
+    stdin_open: true
+    healthcheck:
+      disable: true
+    environment:
+      - NODE_ENV=development
+      # O MySQL roda dentro do próprio container (veja docker/entrypoint.sh).
+      # Os padrões já são estes; descomente para apontar para outro banco.
+      # - DB_HOST=127.0.0.1
+      # - DB_PORT=3306
+      # - DB_USER=root
+      # - DB_PASSWORD=
+      # - DB_NAME=excalidraw
+      # instância de um usuário só: depois da primeira conta, criar outra é
+      # recusado (veja ALLOW_ACCOUNT_CREATION em server/index.mjs)
+      # - ALLOW_ACCOUNT_CREATION=false
+    volumes:
+      - ./:/opt/node_app/app:delegated
+      - ./package.json:/opt/node_app/package.json
+      - ./yarn.lock:/opt/node_app/yarn.lock
+      - notused:/opt/node_app/app/node_modules
+      # cena, imagens e biblioteca ficam aqui: sem o volume, tudo se perde
+      # quando o container é recriado
+      - mysql-data:/var/lib/mysql
+
+  # Backplane das salas de colaboração: permite rodar mais de uma instância de
+  # `collab` e as instâncias compartilharem os eventos. Não guarda dado nenhum
+  # (nem precisa): a cena continua no MySQL do container `excalidraw`.
+  redis:
+    image: redis:7-alpine
+    container_name: excalidraw-redis
+    # sem persistência: é só backplane, se perder não perde nada
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Servidor de salas (socket.io) da colaboração em tempo real. O navegador
+  # conecta direto nele, por isso a porta é publicada no host: é ela que vai em
+  # VITE_APP_WS_SERVER_URL no build do app (veja .env.production).
+  collab:
+    build:
+      context: .
+      dockerfile: collab-server/Dockerfile
+    container_name: excalidraw-collab
+    ports:
+      - "80141:3002"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - COLLAB_PORT=3002
+      - REDIS_URL=redis://redis:6379
+      # em produção, restrinja para o domínio do app:
+      # - CORS_ORIGIN=https://excalidraw.exemplo.com
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3002/health', (res) => { res.resume(); process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  notused:
+  mysql-data:
