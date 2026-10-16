@@ -84,12 +84,23 @@ export type SocketUpdateDataSource = {
     type: WS_SUBTYPES.INIT;
     payload: {
       elements: readonly OrderedExcalidrawElement[];
+      /** aba a que os elementos pertencem */
+      tabId: string;
     };
   };
   SCENE_UPDATE: {
     type: WS_SUBTYPES.UPDATE;
     payload: {
       elements: readonly OrderedExcalidrawElement[];
+      /** aba a que os elementos pertencem */
+      tabId: string;
+    };
+  };
+  TABS: {
+    type: WS_SUBTYPES.TABS;
+    payload: {
+      /** abas compartilhadas da sala, na ordem (o nome vazio = padrão) */
+      tabs: readonly { id: string; name: string }[];
     };
   };
   MOUSE_LOCATION: {

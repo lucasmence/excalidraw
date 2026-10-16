@@ -11,8 +11,8 @@
  * `LocalData`, que cai para o storage do navegador como cache/fallback.
  */
 import type { LibraryPersistedData } from "@excalidraw/excalidraw/data/library";
-import type { AppState, BinaryFileData } from "@excalidraw/excalidraw/types";
-import type { ExcalidrawElement, FileId } from "@excalidraw/element/types";
+import type { BinaryFileData } from "@excalidraw/excalidraw/types";
+import type { FileId } from "@excalidraw/element/types";
 
 import {
   blindIndex,
@@ -26,12 +26,9 @@ import { requireActiveSession } from "../auth/session";
 
 import { api, isRemoteStorageEnabled } from "./apiClient";
 
-export { isRemoteStorageEnabled };
+import type { Workspace } from "../tabs/workspace";
 
-export type RemoteScene = {
-  elements: ExcalidrawElement[];
-  appState: Partial<AppState>;
-};
+export { isRemoteStorageEnabled };
 
 export type RemoteFiles = {
   loadedFiles: BinaryFileData[];
@@ -70,7 +67,7 @@ export const remoteFileKey = async (id: FileId) => {
 // cena
 // -----------------------------------------------------------------------------
 
-export const fetchRemoteScene = async (): Promise<RemoteScene | null> => {
+export const fetchRemoteWorkspace = async (): Promise<unknown> => {
   const { accountId, keys } = requireActiveSession();
   const data = await api.get<{ scene: unknown }>("/scene", keys.authSecret);
 
@@ -78,26 +75,20 @@ export const fetchRemoteScene = async (): Promise<RemoteScene | null> => {
     return null;
   }
 
-  return decryptJson<RemoteScene>({
+  return decryptJson<unknown>({
     key: keys.contentKey,
     aad: sceneAad(accountId),
     payload: data.scene,
   });
 };
 
-export const saveRemoteScene = async ({
-  elements,
-  appState,
-}: {
-  elements: readonly ExcalidrawElement[];
-  appState: Partial<AppState>;
-}) => {
+export const saveRemoteWorkspace = async (workspace: Workspace) => {
   const { accountId, keys } = requireActiveSession();
 
   const payload = await encryptJson({
     key: keys.contentKey,
     aad: sceneAad(accountId),
-    value: { elements, appState },
+    value: workspace,
   });
 
   await api.put("/scene", { payload }, keys.authSecret);

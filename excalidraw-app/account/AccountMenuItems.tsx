@@ -3,13 +3,16 @@ import { MainMenu } from "@excalidraw/excalidraw/index";
 import { useI18n } from "@excalidraw/excalidraw/i18n";
 import React from "react";
 
+import { accountsAtom, accountAtom, rememberSession } from "../auth/session";
 import { useAtomValue, useSetAtom } from "../app-jotai";
-import { accountAtom, rememberSession } from "../auth/session";
+import { LocalData } from "../data/LocalData";
 
-import { accountDialogAtom } from "./account-state";
-
-const shortAccountId = (accountId: string) =>
-  `${accountId.slice(0, 6)}…${accountId.slice(-4)}`;
+import { AccountAvatar } from "./AccountList";
+import {
+  accountDialogAtom,
+  addingAccountAtom,
+  shortAccountId,
+} from "./account-state";
 
 const formatDate = (value: string, langCode: string) => {
   const date = new Date(value);
@@ -18,18 +21,30 @@ const formatDate = (value: string, langCode: string) => {
 
 /**
  * Bloco de conta no menu: identificação, "manter conectado" e os atalhos para
- * ver a chave de login e sair. Os diálogos em si são renderizados fora do menu
- * (veja `AccountDialog`), porque o conteúdo do menu é desmontado ao selecionar
- * um item.
+ * alternar/adicionar conta, ver a chave de login e sair. Os diálogos em si são
+ * renderizados fora do menu (veja `AccountDialog`), porque o conteúdo do menu é
+ * desmontado ao selecionar um item.
  */
 export const AccountMenuItems = () => {
   const { t, langCode } = useI18n();
   const account = useAtomValue(accountAtom);
+  const accounts = useAtomValue(accountsAtom);
   const setDialog = useSetAtom(accountDialogAtom);
+  const setAddingAccount = useSetAtom(addingAccountAtom);
 
   if (account.status !== "authenticated") {
     return null;
   }
+
+  /**
+   * Abrir o modo "adicionar conta" tira o editor da tela, então o que ainda
+   * estava para salvar vai para o servidor antes: o save é debounced e passaria
+   * a usar a sessão da conta nova.
+   */
+  const addAccount = async () => {
+    await LocalData.flushSaveAsync();
+    setAddingAccount(account.remote.accountId);
+  };
 
   return (
     <>
@@ -37,8 +52,11 @@ export const AccountMenuItems = () => {
       <MainMenu.ItemCustom>
         <div className="account-menu">
           <div className="account-menu__title">{t("account.menu.section")}</div>
-          <div className="account-menu__id" title={account.remote.accountId}>
-            {shortAccountId(account.remote.accountId)}
+          <div className="account-menu__account">
+            <AccountAvatar accountId={account.remote.accountId} />
+            <div className="account-menu__id" title={account.remote.accountId}>
+              {shortAccountId(account.remote.accountId)}
+            </div>
           </div>
           <div className="account-menu__caption">
             {account.remote.keyRevealedAt
@@ -62,6 +80,16 @@ export const AccountMenuItems = () => {
           </label>
         </div>
       </MainMenu.ItemCustom>
+
+      {accounts.length > 1 && (
+        <MainMenu.Item onSelect={() => setDialog("accounts")}>
+          {t("account.menu.switch")}
+        </MainMenu.Item>
+      )}
+
+      <MainMenu.Item onSelect={() => void addAccount()}>
+        {t("account.menu.addAccount")}
+      </MainMenu.Item>
 
       <MainMenu.Item icon={LockedIcon} onSelect={() => setDialog("key")}>
         {t("account.menu.viewKey")}

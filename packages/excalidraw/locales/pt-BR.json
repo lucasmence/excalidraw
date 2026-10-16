@@ -426,6 +426,13 @@
     "button_copyLink": "Copiar link",
     "button_linkCopied": "Link copiado"
   },
+  "tabs": {
+    "title": "Abas",
+    "new": "Nova aba",
+    "close": "Fechar aba",
+    "rename": "Renomear aba",
+    "defaultName": "Aba {{number}}"
+  },
   "errorDialog": {
     "title": "Erro"
   },
@@ -748,6 +755,27 @@
     "subtitle": "Sua conta é uma chave de 12 palavras: sem email e sem senha.",
     "description": "Tudo o que você desenha é cifrado no navegador com esta chave antes de ser salvo. O servidor guarda apenas dados cifrados.",
     "offlineWarning": "Offline: salvando só neste navegador até o servidor voltar.",
+    "chooser": {
+      "title": "Escolha uma conta",
+      "description": "Estas contas continuam conectadas neste navegador. Só uma fica ativa por vez.",
+      "useOther": "Usar outra conta"
+    },
+    "switch": {
+      "title": "Contas",
+      "description": "Dá para deixar mais de uma conta conectada neste navegador e alternar entre elas. Só uma fica ativa por vez.",
+      "action": "Alternar",
+      "current": "Ativa",
+      "ready": "Chave guardada neste navegador",
+      "needsKey": "Chave não guardada neste navegador",
+      "add": "Adicionar conta",
+      "remove": "Remover",
+      "removeHint": "Remover só tira a conta deste navegador. Ela continua no servidor, e você pode entrar de novo com as 12 palavras."
+    },
+    "add": {
+      "title": "Adicionar conta",
+      "description": "Crie uma conta ou entre com outra chave. A conta que você está usando continua guardada neste navegador.",
+      "cancel": "Voltar para o meu editor"
+    },
     "create": {
       "title": "Criar conta",
       "action": "Gerar minha chave de login",
@@ -777,6 +805,8 @@
     "menu": {
       "section": "Conta",
       "accountId": "Conta",
+      "switch": "Alternar conta",
+      "addAccount": "Adicionar outra conta",
       "viewKey": "Ver minha chave de login",
       "remember": "Manter conectado",
       "logout": "Sair",
@@ -791,7 +821,7 @@
       "close": "Fechar"
     },
     "logout": {
-      "confirm": "Sair? A cópia local do seu desenho é removida deste navegador (ela continua salva no servidor, cifrada com a sua chave).",
+      "confirm": "Sair? A cópia local do seu desenho é removida deste navegador (ela continua salva no servidor, cifrada com a sua chave). Se houver outra conta aqui, você passa para ela.",
       "action": "Sair"
     },
     "errors": {

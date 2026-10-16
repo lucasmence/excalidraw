@@ -6,14 +6,15 @@ import { createAccount, login, logout } from "../auth/session";
 import {
   fetchRemoteFiles,
   fetchRemoteLibrary,
-  fetchRemoteScene,
+  fetchRemoteWorkspace,
   isRemoteStorageEnabled,
   pruneRemoteFiles,
   remoteFileKey,
   saveRemoteFiles,
   saveRemoteLibrary,
-  saveRemoteScene,
+  saveRemoteWorkspace,
 } from "../data/apiStorage";
+import { createWorkspace, normalizeWorkspace } from "../tabs/workspace";
 
 import { createFakeApiServer } from "./helpers/fakeApiServer";
 import { ensureWebcrypto } from "./helpers/webcrypto";
@@ -27,6 +28,10 @@ const BOB_KEY =
 const element = (id: string) => ({ id, isDeleted: false } as ExcalidrawElement);
 
 const fid = (id: string) => id as FileId;
+
+/** o envelope do `/scene` guarda o workspace; a cena única vira uma aba só */
+const sceneWorkspace = (elements: ExcalidrawElement[], appState = {}) =>
+  normalizeWorkspace({ elements, appState });
 
 const makeFile = (id: string, dataURL: string): BinaryFileData => ({
   id: fid(id),
@@ -63,10 +68,10 @@ describe("apiStorage", () => {
   });
 
   it("não fala com o servidor sem conta ativa", async () => {
-    await expect(fetchRemoteScene()).rejects.toThrow("Nenhuma conta ativa");
-    await expect(
-      saveRemoteScene({ elements: [], appState: {} }),
-    ).rejects.toThrow("Nenhuma conta ativa");
+    await expect(fetchRemoteWorkspace()).rejects.toThrow("Nenhuma conta ativa");
+    await expect(saveRemoteWorkspace(createWorkspace())).rejects.toThrow(
+      "Nenhuma conta ativa",
+    );
   });
 
   it("grava a cena cifrada e devolve igual na leitura", async () => {
@@ -75,19 +80,22 @@ describe("apiStorage", () => {
     const elements = [element("SECRET-ELEMENT")];
     const appState = { viewBackgroundColor: "#ffec99" };
 
-    await saveRemoteScene({ elements, appState });
+    const workspace = sceneWorkspace(elements, appState);
+    await saveRemoteWorkspace(workspace);
 
     // o servidor não pode ter visto nada em texto puro
     expect(server.dump()).not.toContain("SECRET-ELEMENT");
     expect(server.dump()).not.toContain("#ffec99");
     expect(server.dump()).not.toContain(ALICE_KEY.split(" ")[0]);
 
-    await expect(fetchRemoteScene()).resolves.toEqual({ elements, appState });
+    await expect(fetchRemoteWorkspace()).resolves.toMatchObject({
+      tabs: [{ elements, appState }],
+    });
   });
 
   it("manda a credencial da conta no header", async () => {
     await createAccount({ loginKey: ALICE_KEY, remember: false });
-    await saveRemoteScene({ elements: [], appState: {} });
+    await saveRemoteWorkspace(createWorkspace());
 
     const sceneCall = server.calls.find((call) => call.path === "/api/scene");
     expect(sceneCall?.method).toBe("PUT");
@@ -95,22 +103,18 @@ describe("apiStorage", () => {
 
   it("isola as contas: cada uma vê só a própria cena", async () => {
     await createAccount({ loginKey: ALICE_KEY, remember: false });
-    await saveRemoteScene({
-      elements: [element("da-alice")],
-      appState: {},
-    });
+    await saveRemoteWorkspace(sceneWorkspace([element("da-alice")]));
 
     logout();
     await createAccount({ loginKey: BOB_KEY, remember: false });
-    await expect(fetchRemoteScene()).resolves.toBeNull();
+    await expect(fetchRemoteWorkspace()).resolves.toBeNull();
 
-    await saveRemoteScene({ elements: [element("do-bob")], appState: {} });
+    await saveRemoteWorkspace(sceneWorkspace([element("do-bob")]));
     logout();
 
     await login({ loginKey: ALICE_KEY, remember: false });
-    await expect(fetchRemoteScene()).resolves.toEqual({
-      elements: [element("da-alice")],
-      appState: {},
+    await expect(fetchRemoteWorkspace()).resolves.toMatchObject({
+      tabs: [{ elements: [element("da-alice")], appState: {} }],
     });
   });
 
@@ -183,7 +187,7 @@ describe("apiStorage", () => {
 
   it("não deixa uma conta ler o envelope cifrado de outra", async () => {
     await createAccount({ loginKey: ALICE_KEY, remember: false });
-    await saveRemoteScene({ elements: [element("da-alice")], appState: {} });
+    await saveRemoteWorkspace(sceneWorkspace([element("da-alice")]));
     const aliceAccountId = [...server.accounts.keys()][0];
 
     logout();
@@ -196,6 +200,6 @@ describe("apiStorage", () => {
       server.scenes.get(aliceAccountId)!,
     );
 
-    await expect(fetchRemoteScene()).rejects.toThrow();
+    await expect(fetchRemoteWorkspace()).rejects.toThrow();
   });
 });

@@ -47,11 +47,8 @@ class Portal {
       }
     });
     this.socket.on("new-user", async (_socketId: string) => {
-      this.broadcastScene(
-        WS_SUBTYPES.INIT,
-        this.collab.getSceneElementsIncludingDeleted(),
-        /* syncAll */ true,
-      );
+      // quem chegou precisa da lista de abas e da cena de cada uma
+      this.collab.broadcastWorkspaceToNewUser();
     });
     this.socket.on("room-user-change", (clients: SocketId[]) => {
       this.collab.setCollaborators(clients);
@@ -104,7 +101,8 @@ class Portal {
   queueFileUpload = throttle(async () => {
     try {
       await this.collab.fileManager.saveFiles({
-        elements: this.collab.excalidrawAPI.getSceneElementsIncludingDeleted(),
+        // imagens de qualquer aba, não só a que está na tela
+        elements: this.collab.getAllSceneElements(),
         files: this.collab.excalidrawAPI.getFiles(),
       });
     } catch (error: any) {
@@ -143,6 +141,7 @@ class Portal {
     updateType: WS_SUBTYPES.INIT | WS_SUBTYPES.UPDATE,
     elements: readonly OrderedExcalidrawElement[],
     syncAll: boolean,
+    tabId: string,
   ) => {
     if (updateType === WS_SUBTYPES.INIT && !syncAll) {
       throw new Error("syncAll must be true when sending SCENE.INIT");
@@ -167,6 +166,7 @@ class Portal {
       type: updateType,
       payload: {
         elements: syncableElements,
+        tabId,
       },
     };
 
@@ -178,6 +178,19 @@ class Portal {
     }
 
     this.queueFileUpload();
+
+    await this._broadcastSocketData(data as SocketUpdateData);
+  };
+
+  /**
+   * Publica a lista de abas da sala (id + nome, na ordem). Quem entra recebe
+   * isso para montar as mesmas abas, mesmo antes de receber as cenas.
+   */
+  broadcastTabs = async (tabs: readonly { id: string; name: string }[]) => {
+    const data: SocketUpdateDataSource["TABS"] = {
+      type: WS_SUBTYPES.TABS,
+      payload: { tabs },
+    };
 
     await this._broadcastSocketData(data as SocketUpdateData);
   };

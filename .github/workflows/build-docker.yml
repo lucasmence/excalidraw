@@ -5,14 +5,14 @@
 #                         container (veja docker/entrypoint.sh);
 #   - `excalidraw-collab` → collab-server/Dockerfile: servidor de salas.
 #
-# Tags: `sha-<curto>` sempre; `latest` e a versão do release (ex.: `1.00`) no
+# Tags: `sha-<curto>` sempre; `latest` e a versão do release (ex.: `1.02`) no
 # master; o nome da tag quando o push é de uma tag do git. Em pull request só
 # constrói (fork não tem permissão de escrever em pacote), o que já valida o
 # Dockerfile. Depois de publicar, o job `smoke-test` sobe a imagem e confere a
 # pilha inteira (nginx → API → MySQL).
 #
 # A versão usada no master vem do input do disparo manual, da variável do
-# repositório `RELEASE_VERSION` ou do padrão `1.00` — exatamente a mesma regra
+# repositório `RELEASE_VERSION` ou do padrão `1.02` — exatamente a mesma regra
 # do `release.yml`, que cria o GitHub Release com essa versão.
 #
 # Obs.: o app é construído com o `.env.production` do repositório (as variáveis
@@ -32,7 +32,7 @@ on:
       version:
         description: "Versão da imagem"
         required: false
-        default: "1.01"
+        default: "1.02"
 
 permissions:
   contents: read
@@ -46,7 +46,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   # mesmo cálculo do release.yml: mantenha os dois em sincronia
-  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.00' }}
+  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.02' }}
 
 jobs:
   build:

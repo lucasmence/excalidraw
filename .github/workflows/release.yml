@@ -7,7 +7,7 @@
 #
 # A versão vem nesta ordem: input do disparo manual → variável do repositório
 # `RELEASE_VERSION` (Settings → Secrets and variables → Actions → Variables) →
-# `1.00`. O `build-docker.yml` usa exatamente a mesma regra para taguear a
+# `1.02`. O `build-docker.yml` usa exatamente a mesma regra para taguear a
 # imagem, então mudar a variável no repositório muda os dois de uma vez.
 #
 # A tag é criada com o `GITHUB_TOKEN`, e pushes feitos com esse token **não**
@@ -24,7 +24,7 @@ on:
       version:
         description: "Versão do release"
         required: false
-        default: "1.01"
+        default: "1.02"
 
 permissions:
   contents: write
@@ -38,7 +38,7 @@ concurrency:
 
 env:
   # mesmo cálculo do build-docker.yml: mantenha os dois em sincronia
-  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.00' }}
+  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.02' }}
 
 jobs:
   release:

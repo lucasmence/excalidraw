@@ -13,10 +13,7 @@
  *   and as the fallback when it's explicitly disabled (`VITE_APP_STORAGE=browser`).
  */
 
-import {
-  clearAppStateForLocalStorage,
-  getDefaultAppState,
-} from "@excalidraw/excalidraw/appState";
+import { clearAppStateForLocalStorage } from "@excalidraw/excalidraw/appState";
 import {
   CANVAS_SEARCH_TAB,
   DEFAULT_SIDEBAR,
@@ -49,22 +46,39 @@ import { SAVE_TO_LOCAL_STORAGE_TIMEOUT, STORAGE_KEYS } from "../app_constants";
 import { getActiveSession } from "../auth/session";
 
 import {
+  getCanvasTabId,
+  getWorkspace,
+  resetWorkspace,
+  updateActiveTabScene,
+} from "../tabs/tabs-store";
+import {
+  cloneWorkspace,
+  getActiveTab,
+  getWorkspaceElements,
+  normalizeWorkspace,
+  WORKSPACE_VERSION,
+} from "../tabs/workspace";
+
+import {
   fetchRemoteFiles,
   fetchRemoteLibrary,
-  fetchRemoteScene,
+  fetchRemoteWorkspace,
   isRemoteStorageEnabled,
   pruneRemoteFiles,
   saveRemoteFiles,
   saveRemoteLibrary,
-  saveRemoteScene,
+  saveRemoteWorkspace,
 } from "./apiStorage";
 import { FileManager } from "./FileManager";
 import { FileStatusStore } from "./fileStatusStore";
 import { Locker } from "./Locker";
-import { importFromLocalStorage, scopedStorageKey } from "./localStorage";
+import {
+  importWorkspaceFromLocalStorage,
+  scopedStorageKey,
+} from "./localStorage";
 import { updateBrowserStateVersion } from "./tabSync";
 
-import type { RemoteScene } from "./apiStorage";
+import type { Workspace } from "../tabs/workspace";
 
 const filesStore = createStore("files-db", "files-store");
 
@@ -100,6 +114,17 @@ const getPersistableScene = (
   };
 };
 
+/** o mesmo expurgo, aplicado a cada aba do workspace */
+const getPersistableWorkspace = (workspace: Workspace): Workspace => ({
+  v: WORKSPACE_VERSION,
+  activeTabId: workspace.activeTabId,
+  tabs: workspace.tabs.map((tab) => ({
+    id: tab.id,
+    name: tab.name,
+    ...getPersistableScene(tab.elements, tab.appState),
+  })),
+});
+
 const isQuotaExceededError = (error: any) => {
   return error instanceof DOMException && error.name === "QuotaExceededError";
 };
@@ -108,8 +133,8 @@ const isQuotaExceededError = (error: any) => {
 // cache/fallback no navegador
 // -----------------------------------------------------------------------------
 
-const writeSceneToBrowserStorage = (
-  { elements, appState }: PersistedScene,
+const writeWorkspaceToBrowserStorage = (
+  workspace: Workspace,
   { bumpVersion = true }: { bumpVersion?: boolean } = {},
 ) => {
   const localStorageQuotaExceeded = appJotaiStore.get(
@@ -118,11 +143,11 @@ const writeSceneToBrowserStorage = (
   try {
     localStorage.setItem(
       scopedStorageKey(STORAGE_KEYS.LOCAL_STORAGE_ELEMENTS),
-      JSON.stringify(elements),
+      JSON.stringify(workspace),
     );
-    localStorage.setItem(
+    // a chave antiga só é limpa: o appState agora vive dentro de cada aba
+    localStorage.removeItem(
       scopedStorageKey(STORAGE_KEYS.LOCAL_STORAGE_APP_STATE),
-      JSON.stringify(appState),
     );
     if (bumpVersion) {
       updateBrowserStateVersion(STORAGE_KEYS.VERSION_DATA_STATE);
@@ -223,14 +248,6 @@ const forgetFileUsage = (ids: FileId[]) => {
     writeFileUsage(usage);
   }
 };
-
-const normalizeRemoteScene = (remote: RemoteScene): PersistedScene => ({
-  elements: (remote.elements || []) as ExcalidrawElement[],
-  appState: {
-    ...getDefaultAppState(),
-    ...clearAppStateForLocalStorage(remote.appState as Partial<AppState>),
-  },
-});
 
 // -----------------------------------------------------------------------------
 // imagens
@@ -342,26 +359,64 @@ class LocalFileManager extends FileManager {
 
 type SavingLockTypes = "collaboration";
 
-export class LocalData {
-  private static _save = debounce(
-    async (
-      elements: readonly ExcalidrawElement[],
-      appState: AppState,
-      files: BinaryFiles,
-      onFilesSaved: () => void,
-    ) => {
-      await this.saveDataState(elements, appState);
+/** o workspace tem algo para guardar? (uma aba vazia não conta) */
+const isWorkspaceEmpty = (workspace: Workspace) =>
+  !workspace.tabs.some(
+    (tab) => tab.elements.length || Object.keys(tab.appState).length,
+  );
 
-      await this.fileStorage.saveFiles({
-        elements,
-        files,
-      });
-      onFilesSaved();
+export class LocalData {
+  /** promessa do último save disparado; quem espera é o `flushSaveAsync` */
+  private static pendingSave: Promise<void> = Promise.resolve();
+
+  private static performSave = async (
+    workspace: Workspace,
+    files: BinaryFiles,
+    onFilesSaved: () => void,
+  ) => {
+    // sair/trocar de conta no meio do save debounced deixa o editor sem dono:
+    // esses dados não são de ninguém e não podem cair numa conta alheia
+    if (isRemoteStorageEnabled() && !getActiveSession()) {
+      return;
+    }
+
+    await this.saveDataState(workspace);
+
+    await this.fileStorage.saveFiles({
+      // imagens referenciadas em qualquer aba, não só na que está aberta
+      elements: getWorkspaceElements(workspace),
+      files,
+    });
+    onFilesSaved();
+  };
+
+  private static _save = debounce(
+    (workspace: Workspace, files: BinaryFiles, onFilesSaved: () => void) => {
+      // a promessa fica guardada: trocar de conta recarrega o app logo depois
+      // do flush, e o save não pode escapar para a sessão seguinte
+      this.pendingSave = this.performSave(workspace, files, onFilesSaved);
     },
     SAVE_TO_LOCAL_STORAGE_TIMEOUT,
   );
 
-  /** Saves DataState, including files. Bails if saving is paused */
+  /**
+   * Persiste o workspace inteiro (todas as abas). Baila se o save está pausado.
+   */
+  static saveWorkspace = (
+    workspace: Workspace,
+    files: BinaryFiles,
+    onFilesSaved: () => void,
+  ) => {
+    if (!this.isSavePaused()) {
+      this._save(cloneWorkspace(workspace), files, onFilesSaved);
+    }
+  };
+
+  /**
+   * Atalho para quem só tem a cena do canvas: espelha os elementos/appState na
+   * aba ativa e persiste o workspace. Sem nenhuma aba registrada (uso isolado /
+   * testes) a cena vira uma aba única, mantendo o comportamento antigo.
+   */
   static save = (
     elements: readonly ExcalidrawElement[],
     appState: AppState,
@@ -369,77 +424,82 @@ export class LocalData {
     onFilesSaved: () => void,
   ) => {
     // we need to make the `isSavePaused` check synchronously (undebounced)
-    if (!this.isSavePaused()) {
-      this._save(elements, appState, files, onFilesSaved);
+    if (this.isSavePaused()) {
+      return;
     }
+
+    // a cena salva é a que está no canvas, não necessariamente a aba em foco
+    // (durante a troca de aba as duas divergem por um instante)
+    if (!getCanvasTabId()) {
+      this.saveWorkspace(
+        normalizeWorkspace({ elements, appState }),
+        files,
+        onFilesSaved,
+      );
+      return;
+    }
+
+    updateActiveTabScene({ elements, appState });
+    this.saveWorkspace(getWorkspace(), files, onFilesSaved);
   };
 
   /**
-   * Writes the scene to MySQL. If the API is unreachable the scene is kept in
-   * the browser and marked for re-sync, so nothing is lost while offline.
+   * Escreve o workspace no MySQL. Se a API estiver fora do ar ele fica no
+   * navegador e marcado para re-sync, então nada se perde enquanto offline.
    */
-  private static saveDataState = async (
-    elements: readonly ExcalidrawElement[],
-    appState: AppState,
-  ) => {
-    const scene = getPersistableScene(elements, appState);
+  private static saveDataState = async (workspace: Workspace) => {
+    const persistable = getPersistableWorkspace(workspace);
 
     if (!isRemoteStorageEnabled()) {
-      writeSceneToBrowserStorage(scene);
+      writeWorkspaceToBrowserStorage(persistable);
       return;
     }
 
     try {
-      await saveRemoteScene(scene);
+      await saveRemoteWorkspace(persistable);
       setPendingSync(false);
       // espelha localmente: alimenta o fallback offline e o sync entre abas
-      writeSceneToBrowserStorage(scene);
+      writeWorkspaceToBrowserStorage(persistable);
     } catch (error) {
       console.warn(
         "[storage] MySQL indisponível; guardando a cena no navegador até reconectar",
         error,
       );
-      writeSceneToBrowserStorage(scene);
+      writeWorkspaceToBrowserStorage(persistable);
       setPendingSync(true);
     }
   };
 
   /**
-   * Loads the scene from MySQL, falling back to the browser copy when the API
-   * is unreachable. Local edits that never reached the database win, and are
-   * pushed back.
+   * Lê o workspace do MySQL, caindo para a cópia do navegador quando a API
+   * está inacessível. Edições locais que nunca chegaram ao banco ganham, e são
+   * reenviadas.
    */
-  static loadScene = async (): Promise<{
-    elements: ExcalidrawElement[];
-    appState: Partial<AppState> | null;
-  }> => {
-    const local = importFromLocalStorage();
+  static loadWorkspace = async (): Promise<Workspace> => {
+    const local = importWorkspaceFromLocalStorage();
 
     if (!isRemoteStorageEnabled()) {
       return local;
     }
 
     try {
-      const remote = await fetchRemoteScene();
+      const remote = await fetchRemoteWorkspace();
 
       if (hasPendingSync()) {
-        await this.pushSceneToRemote(local);
+        await this.pushWorkspaceToRemote(local);
         return local;
       }
 
       if (remote) {
-        const scene = normalizeRemoteScene(remote);
+        const workspace = normalizeWorkspace(remote);
         // cache only: bumping the version would make other tabs reload
-        writeSceneToBrowserStorage(scene, { bumpVersion: false });
-        return {
-          elements: scene.elements as ExcalidrawElement[],
-          appState: scene.appState,
-        };
+        writeWorkspaceToBrowserStorage(workspace, { bumpVersion: false });
+        return workspace;
       }
 
       // empty database: migrate whatever the browser already had
-      if (local.elements.length || local.appState) {
-        await this.pushSceneToRemote(local);
+      if (!isWorkspaceEmpty(local)) {
+        await this.pushWorkspaceToRemote(local);
       }
       return local;
     } catch (error) {
@@ -451,14 +511,21 @@ export class LocalData {
     }
   };
 
-  private static pushSceneToRemote = async (local: {
+  /** a cena da aba ativa, no formato antigo (compatibilidade) */
+  static loadScene = async (): Promise<{
     elements: ExcalidrawElement[];
-    appState: Partial<AppState> | null;
-  }) => {
+    appState: Partial<AppState>;
+  }> => {
+    const tab = getActiveTab(await this.loadWorkspace());
+    return {
+      elements: tab.elements as ExcalidrawElement[],
+      appState: tab.appState,
+    };
+  };
+
+  private static pushWorkspaceToRemote = async (local: Workspace) => {
     try {
-      await saveRemoteScene(
-        getPersistableScene(local.elements, local.appState || {}),
-      );
+      await saveRemoteWorkspace(getPersistableWorkspace(local));
       setPendingSync(false);
     } catch (error) {
       console.warn(
@@ -471,6 +538,16 @@ export class LocalData {
 
   static flushSave = () => {
     this._save.flush();
+  };
+
+  /**
+   * Como o `flushSave`, mas espera o save terminar. A troca de conta precisa
+   * disso: o save é debounced e, disparado depois da troca, escreveria os dados
+   * da conta que saiu na conta que entrou.
+   */
+  static flushSaveAsync = async () => {
+    this._save.flush();
+    await this.pendingSave;
   };
 
   private static locker = new Locker<SavingLockTypes>();
@@ -488,13 +565,12 @@ export class LocalData {
   };
 
   /**
-   * Chamado no logout: sem a cópia local, outro login no mesmo navegador não
-   * encontra a cena de quem saiu (nem em texto puro no localStorage). As chaves
-   * são por conta, então isso não afeta outras contas.
+   * Chamado ao sair (e ao remover uma conta do navegador): sem a cópia local,
+   * outro login no mesmo navegador não encontra a cena de quem saiu (nem em
+   * texto puro no localStorage). As chaves são por conta, então isso não afeta
+   * as outras contas guardadas aqui.
    */
-  static clearAccountData = () => {
-    const accountId = getActiveSession()?.accountId;
-
+  static clearAccountData = (accountId = getActiveSession()?.accountId) => {
     if (!accountId) {
       return;
     }
@@ -510,6 +586,12 @@ export class LocalData {
       } catch (error: any) {
         console.error(error);
       }
+    }
+
+    // as abas em memória são as da conta ativa: limpar outra conta não pode
+    // esvaziar o editor que está aberto
+    if (getActiveSession()?.accountId === accountId) {
+      resetWorkspace();
     }
   };
 

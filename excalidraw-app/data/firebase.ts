@@ -1,5 +1,5 @@
 import { reconcileElements } from "@excalidraw/excalidraw";
-import { MIME_TYPES, toBrandedType } from "@excalidraw/common";
+import { MIME_TYPES } from "@excalidraw/common";
 import { decompressData } from "@excalidraw/excalidraw/data/encode";
 import {
   encryptData,
@@ -33,6 +33,8 @@ import type {
 import { FILE_CACHE_MAX_AGE_SEC } from "../app_constants";
 
 import { getSyncableElements } from ".";
+
+import type { Workspace } from "../tabs/workspace";
 
 import type { SyncableExcalidrawElement } from ".";
 import type Portal from "../collab/Portal";
@@ -90,21 +92,80 @@ type FirebaseStoredScene = {
   ciphertext: Bytes;
 };
 
-const encryptElements = async (
+/** uma aba como ela viaja na sala (id, nome e elementos sincronizáveis) */
+export type RoomTab = {
+  id: string;
+  name: string;
+  elements: SyncableExcalidrawElement[];
+};
+
+/** o workspace da sala: todas as abas compartilhadas */
+export type RoomWorkspace = {
+  tabs: RoomTab[];
+};
+
+/** qualquer coisa no formato do workspace da sala (a versão local serve) */
+type WorkspaceLike = {
+  tabs: readonly { elements: readonly ExcalidrawElement[] }[];
+};
+
+const workspaceElements = (workspace: WorkspaceLike) =>
+  workspace.tabs.reduce<ExcalidrawElement[]>(
+    (acc, tab) => acc.concat(tab.elements),
+    [],
+  );
+
+/**
+ * Normaliza o que estava guardado na sala: o formato novo (`{ tabs }`) ou o
+ * antigo (um array de elementos, quando a sala tinha uma cena só).
+ */
+export const normalizeRoomWorkspace = (raw: unknown): RoomWorkspace => {
+  if (
+    raw &&
+    typeof raw === "object" &&
+    Array.isArray((raw as { tabs?: unknown }).tabs)
+  ) {
+    const tabs = ((raw as RoomWorkspace).tabs || [])
+      .filter((tab) => tab && typeof tab === "object")
+      .map((tab) => ({
+        id: typeof tab.id === "string" && tab.id ? tab.id : "default",
+        name: typeof tab.name === "string" ? tab.name : "",
+        elements: Array.isArray(tab.elements) ? tab.elements : [],
+      }));
+
+    return {
+      tabs: tabs.length ? tabs : [{ id: "default", name: "", elements: [] }],
+    };
+  }
+
+  return {
+    tabs: [
+      {
+        id: "default",
+        name: "",
+        elements: Array.isArray(raw)
+          ? (raw as SyncableExcalidrawElement[])
+          : [],
+      },
+    ],
+  };
+};
+
+const encryptWorkspace = async (
   key: string,
-  elements: readonly ExcalidrawElement[],
+  workspace: RoomWorkspace,
 ): Promise<{ ciphertext: ArrayBuffer; iv: Uint8Array }> => {
-  const json = JSON.stringify(elements);
+  const json = JSON.stringify(workspace);
   const encoded = new TextEncoder().encode(json);
   const { encryptedBuffer, iv } = await encryptData(key, encoded);
 
   return { ciphertext: encryptedBuffer, iv };
 };
 
-const decryptElements = async (
+const decryptWorkspace = async (
   data: FirebaseStoredScene,
   roomKey: string,
-): Promise<readonly ExcalidrawElement[]> => {
+): Promise<unknown> => {
   const ciphertext = data.ciphertext.toUint8Array() as Uint8Array<ArrayBuffer>;
   const iv = data.iv.toUint8Array() as Uint8Array<ArrayBuffer>;
 
@@ -120,20 +181,17 @@ class FirebaseSceneVersionCache {
   static get = (socket: Socket) => {
     return FirebaseSceneVersionCache.cache.get(socket);
   };
-  static set = (
-    socket: Socket,
-    elements: readonly SyncableExcalidrawElement[],
-  ) => {
-    FirebaseSceneVersionCache.cache.set(socket, getSceneVersion(elements));
+  static set = (socket: Socket, version: number) => {
+    FirebaseSceneVersionCache.cache.set(socket, version);
   };
 }
 
 export const isSavedToFirebase = (
   portal: Portal,
-  elements: readonly ExcalidrawElement[],
+  workspace: WorkspaceLike,
 ): boolean => {
   if (portal.socket && portal.roomId && portal.roomKey) {
-    const sceneVersion = getSceneVersion(elements);
+    const sceneVersion = getSceneVersion(workspaceElements(workspace));
 
     return FirebaseSceneVersionCache.get(portal.socket) === sceneVersion;
   }
@@ -172,11 +230,11 @@ export const saveFilesToFirebase = async ({
 };
 
 const createFirebaseSceneDocument = async (
-  elements: readonly SyncableExcalidrawElement[],
+  workspace: RoomWorkspace,
   roomKey: string,
 ) => {
-  const sceneVersion = getSceneVersion(elements);
-  const { ciphertext, iv } = await encryptElements(roomKey, elements);
+  const sceneVersion = getSceneVersion(workspaceElements(workspace));
+  const { ciphertext, iv } = await encryptWorkspace(roomKey, workspace);
   return {
     sceneVersion,
     ciphertext: Bytes.fromUint8Array(new Uint8Array(ciphertext)),
@@ -184,18 +242,76 @@ const createFirebaseSceneDocument = async (
   } as FirebaseStoredScene;
 };
 
+/** elementos vindos do banco, prontos para reconciliar */
+const restoreRoomWorkspace = (workspace: RoomWorkspace): RoomWorkspace => ({
+  tabs: workspace.tabs.map((tab) => ({
+    id: tab.id,
+    name: tab.name,
+    elements: getSyncableElements(
+      restoreElements(tab.elements, null, { deleteInvisibleElements: true }),
+    ),
+  })),
+});
+
+/**
+ * Reconcilia, aba a aba, o workspace que este cliente quer gravar com o que já
+ * está na sala — a mesma lógica de antes, só que por aba (o id da aba é a
+ * chave). Abas novas (que a sala ainda não tem) entram inteiras.
+ */
+const reconcileRoomWorkspace = (
+  incoming: RoomWorkspace,
+  stored: RoomWorkspace,
+  appState: AppState,
+): RoomWorkspace => {
+  const storedById = new Map(stored.tabs.map((tab) => [tab.id, tab]));
+
+  return {
+    tabs: incoming.tabs.map((tab) => {
+      const prev = storedById.get(tab.id);
+      if (!prev) {
+        return {
+          ...tab,
+          elements: getSyncableElements(tab.elements),
+        };
+      }
+
+      return {
+        ...tab,
+        elements: getSyncableElements(
+          reconcileElements(
+            tab.elements as OrderedExcalidrawElement[],
+            prev.elements as OrderedExcalidrawElement[] as RemoteExcalidrawElement[],
+            appState,
+          ),
+        ),
+      };
+    }),
+  };
+};
+
 export const saveToFirebase = async (
   portal: Portal,
-  elements: readonly SyncableExcalidrawElement[],
+  workspace: Workspace,
   appState: AppState,
-) => {
+): Promise<RoomWorkspace | null> => {
   const { roomId, roomKey, socket } = portal;
+
+  const incoming: RoomWorkspace = {
+    tabs: workspace.tabs.map((tab) => ({
+      id: tab.id,
+      name: tab.name,
+      elements: getSyncableElements(
+        tab.elements as readonly OrderedExcalidrawElement[],
+      ),
+    })),
+  };
+
   if (
     // bail if no room exists as there's nothing we can do at this point
     !roomId ||
     !roomKey ||
     !socket ||
-    isSavedToFirebase(portal, elements)
+    isSavedToFirebase(portal, incoming)
   ) {
     return null;
   }
@@ -207,7 +323,7 @@ export const saveToFirebase = async (
     const snapshot = await transaction.get(docRef);
 
     if (!snapshot.exists()) {
-      const storedScene = await createFirebaseSceneDocument(elements, roomKey);
+      const storedScene = await createFirebaseSceneDocument(incoming, roomKey);
 
       transaction.set(docRef, storedScene);
 
@@ -215,42 +331,44 @@ export const saveToFirebase = async (
     }
 
     const prevStoredScene = snapshot.data() as FirebaseStoredScene;
-    const prevStoredElements = getSyncableElements(
-      restoreElements(await decryptElements(prevStoredScene, roomKey), null),
+    const prevWorkspace = restoreRoomWorkspace(
+      normalizeRoomWorkspace(await decryptWorkspace(prevStoredScene, roomKey)),
     );
-    const reconciledElements = getSyncableElements(
-      reconcileElements(
-        elements,
-        prevStoredElements as OrderedExcalidrawElement[] as RemoteExcalidrawElement[],
-        appState,
-      ),
+
+    const mergedWorkspace = reconcileRoomWorkspace(
+      incoming,
+      prevWorkspace,
+      appState,
     );
 
     const storedScene = await createFirebaseSceneDocument(
-      reconciledElements,
+      mergedWorkspace,
       roomKey,
     );
 
     transaction.update(docRef, storedScene);
 
-    // Return the stored elements as the in memory `reconciledElements` could have mutated in the meantime
+    // Return the stored scene as the in memory `mergedWorkspace` could have mutated in the meantime
     return storedScene;
   });
 
-  const storedElements = getSyncableElements(
-    restoreElements(await decryptElements(storedScene, roomKey), null),
+  const storedWorkspace = restoreRoomWorkspace(
+    normalizeRoomWorkspace(await decryptWorkspace(storedScene, roomKey)),
   );
 
-  FirebaseSceneVersionCache.set(socket, storedElements);
+  FirebaseSceneVersionCache.set(
+    socket,
+    getSceneVersion(workspaceElements(storedWorkspace)),
+  );
 
-  return toBrandedType<RemoteExcalidrawElement[]>(storedElements);
+  return storedWorkspace;
 };
 
 export const loadFromFirebase = async (
   roomId: string,
   roomKey: string,
   socket: Socket | null,
-): Promise<readonly SyncableExcalidrawElement[] | null> => {
+): Promise<RoomWorkspace | null> => {
   const firestore = _getFirestore();
   const docRef = doc(firestore, "scenes", roomId);
   const docSnap = await getDoc(docRef);
@@ -258,17 +376,18 @@ export const loadFromFirebase = async (
     return null;
   }
   const storedScene = docSnap.data() as FirebaseStoredScene;
-  const elements = getSyncableElements(
-    restoreElements(await decryptElements(storedScene, roomKey), null, {
-      deleteInvisibleElements: true,
-    }),
+  const workspace = restoreRoomWorkspace(
+    normalizeRoomWorkspace(await decryptWorkspace(storedScene, roomKey)),
   );
 
   if (socket) {
-    FirebaseSceneVersionCache.set(socket, elements);
+    FirebaseSceneVersionCache.set(
+      socket,
+      getSceneVersion(workspaceElements(workspace)),
+    );
   }
 
-  return elements;
+  return workspace;
 };
 
 export const loadFilesFromFirebase = async (

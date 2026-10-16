@@ -440,6 +440,13 @@
     "button_copyLink": "Copy link",
     "button_linkCopied": "Link copied"
   },
+  "tabs": {
+    "title": "Tabs",
+    "new": "New tab",
+    "close": "Close tab",
+    "rename": "Rename tab",
+    "defaultName": "Tab {{number}}"
+  },
   "errorDialog": {
     "title": "Error"
   },
@@ -774,6 +781,27 @@
     "subtitle": "Your account is a key of 12 words: no email, no password.",
     "description": "Everything you draw is encrypted in your browser with this key before it is saved. The server only stores encrypted data.",
     "offlineWarning": "Offline: saving only in this browser until the server is back.",
+    "chooser": {
+      "title": "Choose an account",
+      "description": "These accounts stay signed in on this browser. Only one is active at a time.",
+      "useOther": "Use another account"
+    },
+    "switch": {
+      "title": "Accounts",
+      "description": "You can keep more than one account signed in on this browser and switch between them. Only one is active at a time.",
+      "action": "Switch",
+      "current": "Active",
+      "ready": "Key saved in this browser",
+      "needsKey": "Key not saved in this browser",
+      "add": "Add account",
+      "remove": "Remove",
+      "removeHint": "Removing an account only takes it out of this browser. It stays on the server, and you can sign in again with the 12 words."
+    },
+    "add": {
+      "title": "Add account",
+      "description": "Create an account or sign in with another key. The account you are using stays saved in this browser.",
+      "cancel": "Back to my editor"
+    },
     "create": {
       "title": "Create account",
       "action": "Generate my login key",
@@ -803,6 +831,8 @@
     "menu": {
       "section": "Account",
       "accountId": "Account",
+      "switch": "Switch account",
+      "addAccount": "Add another account",
       "viewKey": "View my login key",
       "remember": "Keep me signed in",
       "logout": "Sign out",
@@ -817,7 +847,7 @@
       "close": "Close"
     },
     "logout": {
-      "confirm": "Sign out? The local copy of your drawing is removed from this browser (it stays saved on the server, encrypted with your key).",
+      "confirm": "Sign out? The local copy of your drawing is removed from this browser (it stays saved on the server, encrypted with your key). If you have other accounts here, you will switch to the next one.",
       "action": "Sign out"
     },
     "errors": {

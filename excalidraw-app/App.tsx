@@ -52,6 +52,7 @@ import {
 import type { RemoteExcalidrawElement } from "@excalidraw/excalidraw/data/reconcile";
 import type { RestoredDataState } from "@excalidraw/excalidraw/data/restore";
 import type {
+  ExcalidrawElement,
   FileId,
   NonDeletedExcalidrawElement,
   OrderedExcalidrawElement,
@@ -103,10 +104,7 @@ import {
 
 import { updateStaleImageStatuses } from "./data/FileManager";
 import { FileStatusStore } from "./data/fileStatusStore";
-import {
-  importFromLocalStorage,
-  importUsernameFromLocalStorage,
-} from "./data/localStorage";
+import { importUsernameFromLocalStorage } from "./data/localStorage";
 
 import { loadFilesFromFirebase } from "./data/firebase";
 import {
@@ -115,7 +113,22 @@ import {
   LocalData,
   localStorageQuotaExceededAtom,
 } from "./data/LocalData";
+import { importWorkspaceFromLocalStorage } from "./data/localStorage";
 import { isBrowserStorageStateNewer } from "./data/tabSync";
+import { TabBar } from "./tabs/TabBar";
+import {
+  activeTabIdAtom,
+  bindWorkspace,
+  getActiveTabId,
+  getCanvasTabId,
+  getTabScene,
+  getTabs,
+  getWorkspace,
+  setCanvasTabId,
+  setTabScene,
+  updateActiveTabScene,
+} from "./tabs/tabs-store";
+import { getActiveTab, getWorkspaceElements } from "./tabs/workspace";
 import CollabError, { collabErrorIndicatorAtom } from "./collab/CollabError";
 import { RoomDialog } from "./collab/RoomDialog";
 import { roomDialogAtom } from "./collab/room-state";
@@ -198,7 +211,7 @@ const shareableLinkConfirmDialog = {
   color: "danger",
 } as const;
 
-const initializeScene = async (opts: {
+const initializeSceneInner = async (opts: {
   collabAPI: CollabAPI | null;
   excalidrawAPI: ExcalidrawImperativeAPI;
 }): Promise<
@@ -214,7 +227,11 @@ const initializeScene = async (opts: {
   );
   const externalUrlMatch = window.location.hash.match(/^#url=(.*)$/);
 
-  const localDataState = await LocalData.loadScene();
+  // o workspace inteiro (todas as abas) é lido de uma vez: as abas ficam no
+  // store e só a aba ativa vira a cena do editor
+  const workspace = await LocalData.loadWorkspace();
+  bindWorkspace(workspace);
+  const localDataState = getActiveTab(workspace);
 
   let scene: Omit<
     RestoredDataState,
@@ -375,6 +392,46 @@ const initializeScene = async (opts: {
   return { scene: null, isExternalScene: false };
 };
 
+/**
+ * `initializeScene` + a qual aba a cena devolvida pertence. Entre o começo da
+ * carga e o fim dela a sala pode ter trocado a aba ativa (mensagem TABS), e
+ * quem chamou precisa saber se o que voltou ainda é a aba certa.
+ */
+const initializeScene = async (opts: {
+  collabAPI: CollabAPI | null;
+  excalidrawAPI: ExcalidrawImperativeAPI;
+}) => {
+  const data = await initializeSceneInner(opts);
+  return { ...data, tabId: getActiveTabId() || null };
+};
+
+/** põe a cena guardada de uma aba no canvas, sem entrar no histórico */
+const applyTabSceneToCanvas = (
+  excalidrawAPI: ExcalidrawImperativeAPI,
+  tabId: string,
+) => {
+  const scene = getTabScene(tabId);
+  excalidrawAPI.updateScene({
+    elements: restoreElements(scene?.elements ?? [], null, {
+      repairBindings: true,
+    }),
+    appState: restoreAppState(
+      scene?.appState ?? {},
+      excalidrawAPI.getAppState(),
+    ),
+    captureUpdate: CaptureUpdateAction.NEVER,
+  });
+};
+
+/** ids das imagens usadas em qualquer aba (poda e carga de arquivos) */
+const getWorkspaceFileIds = (): FileId[] =>
+  getWorkspaceElements(getWorkspace()).reduce((acc, element) => {
+    if (isInitializedImageElement(element)) {
+      acc.push(element.fileId);
+    }
+    return acc;
+  }, [] as FileId[]);
+
 const ExcalidrawWrapper = () => {
   const excalidrawAPI = useExcalidrawAPI();
 
@@ -397,6 +454,10 @@ const ExcalidrawWrapper = () => {
   }
 
   const debugCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const activeTabId = useAtomValue(activeTabIdAtom);
+  /** a cena inicial (initialData) já chegou no editor? */
+  const editorReadyRef = useRef(false);
 
   useEffect(() => {
     trackEvent("load", "frame", getFrame());
@@ -548,15 +609,96 @@ const ExcalidrawWrapper = () => {
               });
           }
           // on fresh load, clear unused files from IDB (from previous
-          // session)
+          // session) — de todas as abas, não só a que abriu
           LocalData.fileStorage.clearObsoleteFiles({
-            currentFileIds: fileIds,
+            currentFileIds: getWorkspaceFileIds(),
           });
         }
       }
     },
     [collabAPI, excalidrawAPI],
   );
+
+  /** carrega as imagens usadas por uma aba ao abri-la */
+  const loadTabImages = useCallback(
+    (elements: readonly ExcalidrawElement[]) => {
+      if (!excalidrawAPI) {
+        return;
+      }
+
+      const fileIds = elements.reduce((acc, element) => {
+        if (isInitializedImageElement(element)) {
+          acc.push(element.fileId);
+        }
+        return acc;
+      }, [] as FileId[]);
+
+      if (!fileIds.length) {
+        return;
+      }
+
+      if (collabAPI?.isCollaborating()) {
+        collabAPI
+          .fetchImageFilesFromFirebase({
+            elements,
+            forceFetchFiles: true,
+          })
+          .then(({ loadedFiles, erroredFiles }) => {
+            if (loadedFiles.length) {
+              excalidrawAPI.addFiles(loadedFiles);
+            }
+            updateStaleImageStatuses({
+              excalidrawAPI,
+              erroredFiles,
+              elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
+            });
+          });
+        return;
+      }
+
+      LocalData.fileStorage
+        .getFiles(fileIds)
+        .then(({ loadedFiles, erroredFiles }) => {
+          if (loadedFiles.length) {
+            excalidrawAPI.addFiles(loadedFiles);
+          }
+          updateStaleImageStatuses({
+            excalidrawAPI,
+            erroredFiles,
+            elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
+          });
+        });
+    },
+    [collabAPI, excalidrawAPI],
+  );
+
+  // troca de aba: guarda a cena que sai e carrega a que entra
+  useEffect(() => {
+    if (!excalidrawAPI || !editorReadyRef.current) {
+      return;
+    }
+
+    const previousTabId = getCanvasTabId();
+    if (previousTabId === activeTabId) {
+      return;
+    }
+
+    // 1) guarda a cena que está saindo, antes de o canvas mudar de dono
+    // (a aba pode ter sido fechada — aí não há o que guardar)
+    if (previousTabId && getTabs().some((tab) => tab.id === previousTabId)) {
+      setTabScene(previousTabId, {
+        elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
+        appState: excalidrawAPI.getAppState(),
+      });
+    }
+
+    // 2) daqui pra frente o que o editor emitir já é da aba nova
+    setCanvasTabId(activeTabId);
+
+    // 3) carrega a cena da aba que entra
+    applyTabSceneToCanvas(excalidrawAPI, activeTabId);
+    loadTabImages(getTabScene(activeTabId)?.elements ?? []);
+  }, [activeTabId, excalidrawAPI, loadTabImages]);
 
   useEffect(() => {
     if (!excalidrawAPI || (!isCollabDisabled && !collabAPI)) {
@@ -566,6 +708,15 @@ const ExcalidrawWrapper = () => {
     initializeScene({ collabAPI, excalidrawAPI }).then(async (data) => {
       loadImages(data, /* isInitialLoad */ true);
       initialStatePromiseRef.current.promise.resolve(data.scene);
+
+      editorReadyRef.current = true;
+      // a sala pode ter trocado a aba ativa enquanto a cena carregava: garante
+      // que o canvas mostre a aba certa antes de deixar a troca reativa agir
+      const currentTabId = getActiveTabId();
+      setCanvasTabId(currentTabId);
+      if (currentTabId && data.tabId && data.tabId !== currentTabId) {
+        applyTabSceneToCanvas(excalidrawAPI, currentTabId);
+      }
     });
 
     const onHashChange = async (event: HashChangeEvent) => {
@@ -605,13 +756,21 @@ const ExcalidrawWrapper = () => {
       ) {
         // don't sync if local state is newer or identical to browser state
         if (isBrowserStorageStateNewer(STORAGE_KEYS.VERSION_DATA_STATE)) {
-          const localDataState = importFromLocalStorage();
+          // outra aba do navegador salvou: adota o workspace inteiro
+          const workspace = importWorkspaceFromLocalStorage();
+          bindWorkspace(workspace);
+          const syncedTab = getActiveTab(workspace);
           const username = importUsernameFromLocalStorage();
           setLangCode(getPreferredLanguage());
           excalidrawAPI.updateScene({
-            ...localDataState,
+            elements: restoreElements(syncedTab.elements, null, {
+              repairBindings: true,
+            }),
+            appState: restoreAppState(syncedTab.appState, null),
             captureUpdate: CaptureUpdateAction.NEVER,
           });
+          // o canvas já mostra a aba ativa do workspace sincronizado
+          setCanvasTabId(getActiveTabId());
           LibraryApiAdapter.load().then((data) => {
             if (data) {
               excalidrawAPI.updateLibrary({
@@ -718,6 +877,10 @@ const ExcalidrawWrapper = () => {
     appState: AppState,
     files: BinaryFiles,
   ) => {
+    // a cena do canvas é a da aba ativa: espelha no store para que trocar de
+    // aba (ou a sala) encontre tudo em dia
+    updateActiveTabScene({ elements, appState });
+
     if (collabAPI?.isCollaborating()) {
       collabAPI.syncElements(elements);
     }
@@ -907,6 +1070,8 @@ const ExcalidrawWrapper = () => {
           }
         }}
       >
+        {/* barra de abas: cada aba tem a própria cena */}
+        <TabBar />
         <AppMainMenu
           theme={appTheme}
           refresh={() => forceRefresh((prev) => !prev)}

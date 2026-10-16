@@ -44,9 +44,15 @@ const openMenu = () => {
   fireEvent.click(document.querySelector(".dropdown-menu-button")!);
 };
 
+/** a conta ativa, como ela fica guardada no navegador */
 const storedAccount = () => {
   const raw = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_ACCOUNT);
-  return raw ? JSON.parse(raw) : null;
+  const stored = raw ? JSON.parse(raw) : null;
+  return (
+    stored?.accounts?.find(
+      (account: any) => account.accountId === stored.activeAccountId,
+    ) ?? null
+  );
 };
 
 beforeAll(() => {

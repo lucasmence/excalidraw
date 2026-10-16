@@ -13,9 +13,11 @@ import {
   bootstrapAccount,
 } from "../auth/session";
 import { isRemoteStorageEnabled } from "../data/apiClient";
-import { useSetAtom } from "../app-jotai";
+import { useAtom, useSetAtom } from "../app-jotai";
 import { getPreferredLanguage } from "../app-language/language-detector";
 
+import { addingAccountAtom } from "./account-state";
+import { reloadApp } from "./reload";
 import {
   AccountGate,
   AccountKeyConfirmation,
@@ -25,7 +27,8 @@ import {
 /**
  * Porta de entrada do app: enquanto não existe conta ativa, o editor não é
  * montado (não haveria onde salvar). Também é aqui que a sessão salva no
- * navegador é retomada, que é o que permite o login automático.
+ * navegador é retomada, que é o que permite o login automático, e onde vive o
+ * modo "adicionar conta".
  *
  * Com `VITE_APP_STORAGE=browser` (testes/dev sem banco) não existe conta: os
  * filhos renderizam direto, como antes.
@@ -37,6 +40,7 @@ export const AccountBoundary = ({
 }) => {
   const [state, setState] = useState<AccountState>({ status: "loading" });
   const setAccountState = useSetAtom(accountAtom);
+  const [addingFrom, setAddingFrom] = useAtom(addingAccountAtom);
 
   useEffect(() => {
     // a língua preferida vale também para esta tela, que fica fora do editor
@@ -53,6 +57,20 @@ export const AccountBoundary = ({
 
     bootstrapAccount();
   }, [setAccountState]);
+
+  // Modo "adicionar conta": a tela de conta toma o lugar do editor — a conta
+  // atual não pode salvar nada no meio da troca. Assim que a conta nova entra,
+  // o app recarrega: cena, abas e biblioteca são de uma conta só.
+  if (addingFrom) {
+    return (
+      <AccountGate
+        error={null}
+        adding
+        onCancel={() => setAddingFrom(null)}
+        onAuthenticated={reloadApp}
+      />
+    );
+  }
 
   if (state.status === "loading") {
     return (

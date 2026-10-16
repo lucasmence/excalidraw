@@ -31,9 +31,20 @@ const BOB_KEY =
 let server: ReturnType<typeof createFakeApiServer>;
 let states: AccountState[];
 
-const storedAccount = () => {
+/** tudo o que o navegador guarda: a lista de contas + qual está ativa */
+const storedAccounts = () => {
   const raw = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_ACCOUNT);
   return raw ? JSON.parse(raw) : null;
+};
+
+/** a conta ativa, como ela fica guardada (a frase só existe se foi lembrada) */
+const storedAccount = () => {
+  const stored = storedAccounts();
+  return (
+    stored?.accounts?.find(
+      (account: any) => account.accountId === stored.activeAccountId,
+    ) ?? null
+  );
 };
 
 beforeAll(() => {

@@ -8,6 +8,9 @@ import type { AppState } from "@excalidraw/excalidraw/types";
 
 import { STORAGE_KEYS } from "../app_constants";
 import { getActiveSession } from "../auth/session";
+import { getActiveTab, normalizeWorkspace } from "../tabs/workspace";
+
+import type { Workspace } from "../tabs/workspace";
 
 /**
  * Cena, appState e flags de sincronização são guardados por conta: dois logins
@@ -45,7 +48,14 @@ export const importUsernameFromLocalStorage = (): string | null => {
   return null;
 };
 
-export const importFromLocalStorage = () => {
+/**
+ * Lê o workspace guardado no navegador.
+ *
+ * Aceita os três formatos que já existiram: o workspace novo (com `tabs`), a
+ * cena única antiga (array de elementos em `LOCAL_STORAGE_ELEMENTS` + appState
+ * em `LOCAL_STORAGE_APP_STATE`) e um `{ elements, appState }` no primeiro key.
+ */
+export const importWorkspaceFromLocalStorage = (): Workspace => {
   let savedElements = null;
   let savedState = null;
 
@@ -61,31 +71,52 @@ export const importFromLocalStorage = () => {
     console.error(error);
   }
 
-  let elements: ExcalidrawElement[] = [];
+  let parsed: unknown = null;
   if (savedElements) {
     try {
-      elements = JSON.parse(savedElements);
+      parsed = JSON.parse(savedElements);
     } catch (error: any) {
       console.error(error);
       // Do nothing because elements array is already empty
     }
   }
 
-  let appState = null;
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    Array.isArray((parsed as { tabs?: unknown }).tabs)
+  ) {
+    return normalizeWorkspace(parsed);
+  }
+
+  const elements = Array.isArray(parsed) ? parsed : [];
+
+  let appState: Partial<AppState> | null = null;
   if (savedState) {
     try {
-      appState = {
-        ...getDefaultAppState(),
-        ...clearAppStateForLocalStorage(
-          JSON.parse(savedState) as Partial<AppState>,
-        ),
-      };
+      appState = clearAppStateForLocalStorage(
+        JSON.parse(savedState) as Partial<AppState>,
+      );
     } catch (error: any) {
       console.error(error);
       // Do nothing because appState is already null
     }
   }
-  return { elements, appState };
+
+  // cena antiga: elementos soltos + appState em outra chave
+  return normalizeWorkspace({
+    elements,
+    appState: appState ?? (parsed as { appState?: unknown })?.appState ?? {},
+  });
+};
+
+/** a cena da aba ativa, no formato antigo (quem só quer "a cena") */
+export const importFromLocalStorage = () => {
+  const tab = getActiveTab(importWorkspaceFromLocalStorage());
+  return {
+    elements: tab.elements as ExcalidrawElement[],
+    appState: { ...getDefaultAppState(), ...tab.appState },
+  };
 };
 
 export const getElementsStorageSize = () => {

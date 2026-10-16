@@ -8,14 +8,18 @@ import { generateLoginKey, isValidLoginKey } from "../auth/keys";
 import {
   AccountCreationDisabledError,
   accountCreationOpenAtom,
+  accountsAtom,
   createAccount,
   login,
   LoginKeyTakenError,
   loginKeyOf,
   markLoginKeyRevealed,
+  type StoredAccountInfo,
 } from "../auth/session";
 import { ApiError } from "../data/apiClient";
 
+import { switchToAccount } from "./account-actions";
+import { AccountList } from "./AccountList";
 import { LoginKeyWords } from "./LoginKeyWords";
 
 /**
@@ -114,8 +118,10 @@ const ConfirmCheckbox = ({
 
 const CreateAccount = ({
   onKeyAlreadyExists,
+  onAuthenticated,
 }: {
   onKeyAlreadyExists: (loginKey: string) => void;
+  onAuthenticated?: () => void;
 }) => {
   const [loginKey, setLoginKey] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -136,6 +142,7 @@ const CreateAccount = ({
       // o usuário acabou de confirmar que anotou: a entrega já fica registrada
       // no servidor e a tela de confirmação não aparece de novo
       await markLoginKeyRevealed();
+      onAuthenticated?.();
     } catch (err) {
       setError(describeAccountError(err));
       if (err instanceof LoginKeyTakenError) {
@@ -190,8 +197,10 @@ const CreateAccount = ({
 
 const LoginAccount = ({
   initialLoginKey = "",
+  onAuthenticated,
 }: {
   initialLoginKey?: string;
+  onAuthenticated?: () => void;
 }) => {
   const [value, setValue] = useState(initialLoginKey);
   const [remember, setRemember] = useState(true);
@@ -210,6 +219,7 @@ const LoginAccount = ({
 
     try {
       await login({ loginKey: value, remember });
+      onAuthenticated?.();
     } catch (err) {
       setError(describeAccountError(err));
     } finally {
@@ -253,11 +263,49 @@ const LoginAccount = ({
 };
 
 /**
- * Primeira tela do app: sem conta não existe editor (não haveria onde salvar).
- * Aqui o usuário cria a conta — recebendo a chave de login uma única vez — ou
- * entra com uma chave que já tem.
+ * Contas guardadas neste navegador, uma por linha, para entrar num clique — o
+ * mesmo "escolha uma conta" do Google. Todas as listadas têm a frase guardada,
+ * então nenhuma pede as 12 palavras de novo.
  */
-export const AccountGate = ({ error }: { error: string | null }) => {
+const AccountChooser = ({ accounts }: { accounts: StoredAccountInfo[] }) => (
+  <>
+    <h1 className="account-card__title">{t("account.chooser.title")}</h1>
+    <p className="account-card__text">{t("account.chooser.description")}</p>
+    <AccountList
+      accounts={accounts}
+      renderAction={(account) => (
+        <button
+          type="button"
+          className="account-button account-button--small"
+          onClick={() => void switchToAccount(account.accountId)}
+        >
+          {t("account.switch.action")}
+        </button>
+      )}
+    />
+  </>
+);
+
+/**
+ * Primeira tela do app: sem conta não existe editor (não haveria onde salvar).
+ * Aqui o usuário cria a conta — recebendo a chave de login uma única vez —,
+ * entra com uma chave que já tem, ou escolhe uma das contas que já ficaram
+ * guardadas neste navegador.
+ *
+ * `adding` é o mesmo fluxo aberto de dentro do editor ("adicionar conta"): a
+ * conta atual continua guardada e a nova assume quando entrar.
+ */
+export const AccountGate = ({
+  error,
+  adding = false,
+  onCancel,
+  onAuthenticated,
+}: {
+  error: string | null;
+  adding?: boolean;
+  onCancel?: () => void;
+  onAuthenticated?: () => void;
+}) => {
   const [mode, setMode] = useState<"welcome" | "create" | "login">("welcome");
   const [prefilledKey, setPrefilledKey] = useState("");
   /**
@@ -266,6 +314,20 @@ export const AccountGate = ({ error }: { error: string | null }) => {
    * `accountCreationOpenAtom`), em qualquer das telas.
    */
   const creationOpen = useAtomValue(accountCreationOpenAtom);
+  const accounts = useAtomValue(accountsAtom);
+
+  // no modo "adicionar" quem já está aqui quer outra conta: listar as que já
+  // existem só confundiria
+  const savedAccounts = adding
+    ? []
+    : accounts.filter((account) => account.resumable);
+
+  /** volta para o editor sem trocar de conta (só existe no modo adicionar) */
+  const back = adding ? (
+    <button type="button" className="account-link" onClick={onCancel}>
+      {t("account.add.cancel")}
+    </button>
+  ) : null;
 
   if (mode === "create") {
     return (
@@ -275,6 +337,7 @@ export const AccountGate = ({ error }: { error: string | null }) => {
             setPrefilledKey(loginKey);
             setMode("login");
           }}
+          onAuthenticated={onAuthenticated}
         />
         <button
           type="button"
@@ -283,6 +346,7 @@ export const AccountGate = ({ error }: { error: string | null }) => {
         >
           {t("account.login.action")}
         </button>
+        {back}
       </AccountScreen>
     );
   }
@@ -290,7 +354,10 @@ export const AccountGate = ({ error }: { error: string | null }) => {
   if (mode === "login") {
     return (
       <AccountScreen>
-        <LoginAccount initialLoginKey={prefilledKey} />
+        <LoginAccount
+          initialLoginKey={prefilledKey}
+          onAuthenticated={onAuthenticated}
+        />
         {/* a criação fechada também não pode ser oferecida daqui: era por este
             link que a tela de login mostrava "criar conta" numa instância que a
             API só aceita entrar com a chave que já existe */}
@@ -304,6 +371,69 @@ export const AccountGate = ({ error }: { error: string | null }) => {
           </button>
         ) : (
           <p className="account-hint">{t("account.create.disabled")}</p>
+        )}
+        {back}
+      </AccountScreen>
+    );
+  }
+
+  // modo "adicionar conta", ainda escolhendo o caminho
+  if (adding) {
+    return (
+      <AccountScreen>
+        <h1 className="account-card__title">{t("account.add.title")}</h1>
+        <p className="account-card__text">{t("account.add.description")}</p>
+
+        {creationOpen ? (
+          <button
+            type="button"
+            className="account-button"
+            onClick={() => setMode("create")}
+          >
+            {t("account.create.title")}
+          </button>
+        ) : (
+          <p className="account-hint">{t("account.create.disabled")}</p>
+        )}
+        <button
+          type="button"
+          className="account-button account-button--ghost"
+          onClick={() => setMode("login")}
+        >
+          {t("account.login.action")}
+        </button>
+
+        {back}
+      </AccountScreen>
+    );
+  }
+
+  if (savedAccounts.length > 0) {
+    return (
+      <AccountScreen>
+        <AccountChooser accounts={savedAccounts} />
+        <button
+          type="button"
+          className="account-button account-button--ghost"
+          onClick={() => setMode("login")}
+        >
+          {t("account.chooser.useOther")}
+        </button>
+        {creationOpen && (
+          <button
+            type="button"
+            className="account-link"
+            onClick={() => setMode("create")}
+          >
+            {t("account.create.title")}
+          </button>
+        )}
+        {error && (
+          <p className="account-error">
+            {error === "account.errors.unknownKey"
+              ? t("account.errors.unknownKey")
+              : error}
+          </p>
         )}
       </AccountScreen>
     );
@@ -340,6 +470,7 @@ export const AccountGate = ({ error }: { error: string | null }) => {
             : error}
         </p>
       )}
+      {back}
     </AccountScreen>
   );
 };

@@ -1,9 +1,7 @@
 import {
   CaptureUpdateAction,
   getSceneVersion,
-  restoreElements,
   zoomToFitBounds,
-  reconcileElements,
 } from "@excalidraw/excalidraw";
 import { ErrorDialog } from "@excalidraw/excalidraw/components/ErrorDialog";
 import { APP_NAME, cloneJSON, EVENT, toBrandedType } from "@excalidraw/common";
@@ -28,8 +26,6 @@ import { withBatchedUpdates } from "@excalidraw/excalidraw/reactUtils";
 
 import throttle from "lodash.throttle";
 import { PureComponent } from "react";
-
-import { bumpElementVersions } from "@excalidraw/excalidraw/data/restore";
 
 import type {
   ReconciledExcalidrawElement,
@@ -63,11 +59,7 @@ import {
   SYNC_FULL_SCENE_INTERVAL_MS,
   WS_EVENTS,
 } from "../app_constants";
-import {
-  generateCollaborationLinkData,
-  getCollaborationLink,
-  getSyncableElements,
-} from "../data";
+import { generateCollaborationLinkData, getCollaborationLink } from "../data";
 import {
   encodeFilesForUpload,
   FileManager,
@@ -87,14 +79,28 @@ import {
   saveUsernameToLocalStorage,
 } from "../data/localStorage";
 import { resetBrowserStateVersions } from "../data/tabSync";
+import {
+  applyRemoteTabs,
+  bindWorkspace,
+  getActiveTabId,
+  getCanvasTabId,
+  getTabScene,
+  getTabs,
+  getWorkspace,
+  mergeRemoteSceneElements,
+  subscribeTabs,
+  updateActiveTabScene,
+} from "../tabs/tabs-store";
+import {
+  createWorkspace,
+  getActiveTab,
+  getWorkspaceElements,
+} from "../tabs/workspace";
 
 import { collabErrorIndicatorAtom } from "./CollabError";
 import Portal from "./Portal";
 
-import type {
-  SocketUpdateDataSource,
-  SyncableExcalidrawElement,
-} from "../data";
+import type { SocketUpdateDataSource } from "../data";
 
 export const collabAPIAtom = atom<CollabAPI | null>(null);
 export const isCollaboratingAtom = atom(false);
@@ -140,7 +146,14 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   idleTimeoutId: number | null;
 
   private socketInitializationTimer?: number;
-  private lastBroadcastedOrReceivedSceneVersion: number = -1;
+  /**
+   * Última versão de cena transmitida/recebida, *por aba* — sem isso a troca
+   * de aba acharia que as cenas se comparam entre si.
+   */
+  private sceneVersions = new Map<string, number>();
+  private unsubscribeTabs: (() => void) | null = null;
+  /** sala fixa da conta: funde as abas locais com as da sala */
+  private keepScene = false;
   private collaborators = new Map<SocketId, Collaborator>();
   /** the socket ids of the users following the current user */
   private followedBy = new Set<SocketId>();
@@ -248,6 +261,15 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       setUserToFollow: this.setUserToFollow,
     };
 
+    // criar/renomear/fechar/reordenar aba precisa chegar aos outros da sala
+    this.unsubscribeTabs = subscribeTabs((tabs) => {
+      if (this.portal.isOpen()) {
+        this.portal.broadcastTabs(tabs).catch((error) => {
+          console.error("[collab] não consegui compartilhar as abas", error);
+        });
+      }
+    });
+
     appJotaiStore.set(collabAPIAtom, collabAPI);
 
     if (isTestEnv() || isDevEnv()) {
@@ -283,6 +305,8 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       window.clearTimeout(this.idleTimeoutId);
       this.idleTimeoutId = null;
     }
+    this.unsubscribeTabs?.();
+    this.unsubscribeTabs = null;
     this.onUmmount?.();
   }
 
@@ -297,18 +321,19 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   };
 
   private beforeUnload = withBatchedUpdates((event: BeforeUnloadEvent) => {
-    const syncableElements = getSyncableElements(
-      this.getSceneElementsIncludingDeleted(),
-    );
+    this.syncActiveTabFromCanvas();
+    const workspace = getWorkspace();
 
     if (
       this.isCollaborating() &&
-      (this.fileManager.shouldPreventUnload(syncableElements) ||
-        !isSavedToFirebase(this.portal, syncableElements))
+      (this.fileManager.shouldPreventUnload(
+        getWorkspaceElements(workspace) as readonly OrderedExcalidrawElement[],
+      ) ||
+        !isSavedToFirebase(this.portal, workspace))
     ) {
       // this won't run in time if user decides to leave the site, but
       //  the purpose is to run in immediately after user decides to stay
-      this.saveCollabRoomToFirebase(syncableElements);
+      this.saveCollabRoomToFirebase();
 
       if (import.meta.env.VITE_APP_DISABLE_PREVENT_UNLOAD !== "true") {
         preventUnload(event);
@@ -320,21 +345,34 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     }
   });
 
-  saveCollabRoomToFirebase = async (
-    syncableElements: readonly SyncableExcalidrawElement[],
-  ) => {
-    syncableElements = cloneJSON(syncableElements);
+  /**
+   * Grava a sala no Firestore. Como a sala agora guarda o workspace inteiro,
+   * publica todas as abas (a ativa vem do canvas).
+   */
+  saveCollabRoomToFirebase = async () => {
+    this.syncActiveTabFromCanvas();
+    const workspace = cloneJSON(getWorkspace());
     try {
-      const storedElements = await saveToFirebase(
+      const stored = await saveToFirebase(
         this.portal,
-        syncableElements,
+        workspace,
         this.excalidrawAPI.getAppState(),
       );
 
       this.resetErrorIndicator();
 
-      if (this.isCollaborating() && storedElements) {
-        this.handleRemoteSceneUpdate(this._reconcileElements(storedElements));
+      if (this.isCollaborating() && stored) {
+        // o Firestore pode ter elementos mais novos de outro cliente: aplica o
+        // que ficou guardado (na aba ativa, que é o que aparece na tela)
+        for (const tab of stored.tabs) {
+          const reconciled = this._reconcileElements(
+            toBrandedType<readonly RemoteExcalidrawElement[]>(tab.elements),
+            tab.id,
+          );
+          if (tab.id === getActiveTabId()) {
+            this.handleRemoteSceneUpdate(reconciled, tab.id);
+          }
+        }
       }
     } catch (error: any) {
       const errorMessage = /is longer than.*?bytes/.test(error.message)
@@ -368,11 +406,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     this.loadImageFiles.cancel();
     this.resetErrorIndicator(true);
 
-    this.saveCollabRoomToFirebase(
-      getSyncableElements(
-        this.excalidrawAPI.getSceneElementsIncludingDeleted(),
-      ),
-    );
+    this.saveCollabRoomToFirebase();
 
     if (this.portal.socket && this.fallbackInitializationHandler) {
       this.portal.socket.off(
@@ -411,7 +445,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   };
 
   private destroySocketClient = (opts?: { isUnload: boolean }) => {
-    this.lastBroadcastedOrReceivedSceneVersion = -1;
+    this.sceneVersions.clear();
     this.portal.close();
     this.fileManager.reset();
     this.followedBy = new Set();
@@ -566,9 +600,15 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       return null;
     }
 
+    // sala fixa da conta: as abas locais continuam valendo e são fundidas com
+    // as que já estiverem na sala, em vez de adotar a lista de lá
+    this.keepScene = !!opts?.keepScene;
+
     if (isJoining) {
       // when joining existing room, don't merge it with current scene data
       this.excalidrawAPI.resetScene();
+      // a sala manda nas abas: começa do zero e adota as de lá
+      bindWorkspace(createWorkspace());
     } else if (!opts?.keepScene) {
       const elements = this.excalidrawAPI.getSceneElements().map((element) => {
         if (isImageElement(element) && element.status === "saved") {
@@ -585,7 +625,9 @@ class Collab extends PureComponent<CollabProps, CollabState> {
         captureUpdate: CaptureUpdateAction.NEVER,
       });
 
-      this.saveCollabRoomToFirebase(getSyncableElements(elements));
+      // a cena que estava na tela vira a aba ativa da sala
+      this.syncActiveTabFromCanvas();
+      this.saveCollabRoomToFirebase();
     }
 
     // fallback in case you're not alone in the room but still don't receive
@@ -612,32 +654,53 @@ class Collab extends PureComponent<CollabProps, CollabState> {
         switch (decryptedData.type) {
           case WS_SUBTYPES.INVALID_RESPONSE:
             return;
+          case WS_SUBTYPES.TABS: {
+            // a sala manda nas abas que ela conhece; na sala fixa da conta as
+            // abas locais são fundidas em vez de descartadas
+            applyRemoteTabs([...decryptedData.payload.tabs], {
+              merge: this.keepScene,
+            });
+            break;
+          }
           case WS_SUBTYPES.INIT: {
             if (!this.portal.socketInitialized) {
               this.initializeRoom({ fetchScene: false });
-              const remoteElements = toBrandedType<
-                readonly RemoteExcalidrawElement[]
-              >(decryptedData.payload.elements);
-              const reconciledElements =
-                this._reconcileElements(remoteElements);
-              this.handleRemoteSceneUpdate(reconciledElements);
-              // noop if already resolved via init from firebase
-              scenePromise.resolve({
-                elements: reconciledElements,
-                scrollToContent: true,
-              });
             }
+            // chega um SCENE_INIT por aba: todos são aplicados (a aba ativa vai
+            // para o canvas, as outras ficam no store). Resolver a promise mais
+            // de uma vez é inofensivo — vale a primeira.
+            const tabId = decryptedData.payload.tabId;
+            const reconciledElements = this._reconcileElements(
+              toBrandedType<readonly RemoteExcalidrawElement[]>(
+                decryptedData.payload.elements,
+              ),
+              tabId,
+            );
+            this.handleRemoteSceneUpdate(reconciledElements, tabId);
+            // noop if already resolved via init from firebase
+            scenePromise.resolve({
+              elements: toBrandedType<readonly OrderedExcalidrawElement[]>(
+                tabId === getActiveTabId()
+                  ? reconciledElements
+                  : getTabScene(getActiveTabId())?.elements ?? [],
+              ),
+              scrollToContent: true,
+            });
             break;
           }
-          case WS_SUBTYPES.UPDATE:
+          case WS_SUBTYPES.UPDATE: {
+            const tabId = decryptedData.payload.tabId;
             this.handleRemoteSceneUpdate(
               this._reconcileElements(
                 toBrandedType<readonly RemoteExcalidrawElement[]>(
                   decryptedData.payload.elements,
                 ),
+                tabId,
               ),
+              tabId,
             );
             break;
+          }
           case WS_SUBTYPES.MOUSE_LOCATION: {
             const { pointer, button, username, selectedElementIds } =
               decryptedData.payload;
@@ -752,18 +815,22 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       this.excalidrawAPI.resetScene();
 
       try {
-        const elements = await loadFromFirebase(
+        const workspace = await loadFromFirebase(
           roomLinkData.roomId,
           roomLinkData.roomKey,
           this.portal.socket,
         );
-        if (elements) {
-          this.setLastBroadcastedOrReceivedSceneVersion(
-            getSceneVersion(elements),
-          );
+        if (workspace) {
+          // a sala carrega o workspace: adota as abas e devolve a cena da aba
+          // ativa, que é o que o Excalidraw precisa para montar
+          const bound = bindWorkspace(workspace);
+          const tab = getActiveTab(bound);
+          this.setSceneVersion(tab.id, getSceneVersion(tab.elements));
 
           return {
-            elements,
+            elements: toBrandedType<readonly OrderedExcalidrawElement[]>(
+              tab.elements,
+            ),
             scrollToContent: true,
           };
         }
@@ -779,36 +846,43 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     return null;
   };
 
+  /**
+   * Espelha a cena do canvas na aba ativa do store, para que salvar/publicar
+   * o workspace leve junto o que está na tela.
+   */
+  private syncActiveTabFromCanvas = () => {
+    if (!getCanvasTabId()) {
+      return;
+    }
+    updateActiveTabScene({
+      elements: this.excalidrawAPI.getSceneElementsIncludingDeleted(),
+      appState: this.excalidrawAPI.getAppState(),
+    });
+  };
+
   private _reconcileElements = (
     remoteElements: readonly RemoteExcalidrawElement[],
+    tabId: string,
   ): ReconciledExcalidrawElement[] => {
     const appState = this.excalidrawAPI.getAppState();
 
-    const existingElements = this.getSceneElementsIncludingDeleted();
+    // a aba do canvas pode estar um instante atrás da aba em foco
+    const isActiveTab = tabId === getCanvasTabId();
 
-    // NOTE ideally we restore _after_ reconciliation but we can't do that
-    // as we'd regenerate even elements such as appState.newElement which would
-    // break the state
-    remoteElements = restoreElements(remoteElements, existingElements);
-
-    let reconciledElements = reconcileElements(
-      existingElements,
+    // a aba ativa reconcilia contra o canvas; as outras, contra a cena
+    // guardada no store
+    const reconciledElements = mergeRemoteSceneElements(
+      tabId,
       remoteElements,
       appState,
-    );
-
-    reconciledElements = bumpElementVersions(
-      reconciledElements,
-      existingElements,
+      isActiveTab ? this.getSceneElementsIncludingDeleted() : undefined,
     );
 
     // Avoid broadcasting to the rest of the collaborators the scene
     // we just received!
     // Note: this needs to be set before updating the scene as it
     // synchronously calls render.
-    this.setLastBroadcastedOrReceivedSceneVersion(
-      getSceneVersion(reconciledElements),
-    );
+    this.setSceneVersion(tabId, getSceneVersion(reconciledElements));
 
     return reconciledElements;
   };
@@ -830,13 +904,18 @@ class Collab extends PureComponent<CollabProps, CollabState> {
 
   private handleRemoteSceneUpdate = (
     elements: ReconciledExcalidrawElement[],
+    tabId: string,
   ) => {
-    this.excalidrawAPI.updateScene({
-      elements,
-      captureUpdate: CaptureUpdateAction.NEVER,
-    });
+    // só a aba que o canvas mostra aparece; as outras ficam no store até serem
+    // abertas
+    if (tabId === getCanvasTabId()) {
+      this.excalidrawAPI.updateScene({
+        elements,
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
 
-    this.loadImageFiles();
+      this.loadImageFiles();
+    }
   };
 
   private onPointerMove = () => {
@@ -938,16 +1017,54 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     });
   };
 
-  public setLastBroadcastedOrReceivedSceneVersion = (version: number) => {
-    this.lastBroadcastedOrReceivedSceneVersion = version;
+  /** versão da cena transmitida/recebida, por aba */
+  public setSceneVersion = (tabId: string, version: number) => {
+    this.sceneVersions.set(tabId, version);
   };
 
-  public getLastBroadcastedOrReceivedSceneVersion = () => {
-    return this.lastBroadcastedOrReceivedSceneVersion;
-  };
+  public getSceneVersion = (tabId: string) =>
+    this.sceneVersions.get(tabId) ?? -1;
 
   public getSceneElementsIncludingDeleted = () => {
     return this.excalidrawAPI.getSceneElementsIncludingDeleted();
+  };
+
+  /** elementos de uma aba (a ativa vem do canvas, as outras do store) */
+  private getTabElements = (
+    tabId: string,
+  ): readonly OrderedExcalidrawElement[] => {
+    if (tabId === getCanvasTabId()) {
+      return this.excalidrawAPI.getSceneElementsIncludingDeleted();
+    }
+    return (getTabScene(tabId)?.elements ??
+      []) as readonly OrderedExcalidrawElement[];
+  };
+
+  /** elementos de todas as abas, inclusive a que está na tela */
+  public getAllSceneElements = () => {
+    this.syncActiveTabFromCanvas();
+    return getWorkspaceElements(getWorkspace());
+  };
+
+  /**
+   * Manda para quem acabou de entrar a lista de abas e a cena de cada uma,
+   * para que a sala fique igual em todos os clientes.
+   */
+  public broadcastWorkspaceToNewUser = async () => {
+    if (!this.portal.isOpen()) {
+      return;
+    }
+
+    await this.portal.broadcastTabs(getTabs());
+
+    for (const tab of getTabs()) {
+      await this.portal.broadcastScene(
+        WS_SUBTYPES.INIT,
+        this.getTabElements(tab.id),
+        true,
+        tab.id,
+      );
+    }
   };
 
   onPointerUpdate = throttle(
@@ -979,12 +1096,14 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   };
 
   broadcastElements = (elements: readonly OrderedExcalidrawElement[]) => {
-    if (
-      getSceneVersion(elements) >
-      this.getLastBroadcastedOrReceivedSceneVersion()
-    ) {
-      this.portal.broadcastScene(WS_SUBTYPES.UPDATE, elements, false);
-      this.lastBroadcastedOrReceivedSceneVersion = getSceneVersion(elements);
+    const tabId = getActiveTabId();
+    if (!tabId) {
+      return;
+    }
+
+    if (getSceneVersion(elements) > this.getSceneVersion(tabId)) {
+      this.portal.broadcastScene(WS_SUBTYPES.UPDATE, elements, false, tabId);
+      this.setSceneVersion(tabId, getSceneVersion(elements));
       this.queueBroadcastAllElements();
     }
   };
@@ -994,28 +1113,27 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     this.queueSaveToFirebase();
   };
 
-  queueBroadcastAllElements = throttle(() => {
-    this.portal.broadcastScene(
-      WS_SUBTYPES.UPDATE,
-      this.excalidrawAPI.getSceneElementsIncludingDeleted(),
-      true,
-    );
-    const currentVersion = this.getLastBroadcastedOrReceivedSceneVersion();
-    const newVersion = Math.max(
-      currentVersion,
-      getSceneVersion(this.getSceneElementsIncludingDeleted()),
-    );
-    this.setLastBroadcastedOrReceivedSceneVersion(newVersion);
+  /** reenvia a cena inteira de cada aba (rede de segurança contra divergência) */
+  queueBroadcastAllElements = throttle(async () => {
+    for (const tab of getTabs()) {
+      const elements = this.getTabElements(tab.id);
+      await this.portal.broadcastScene(
+        WS_SUBTYPES.UPDATE,
+        elements,
+        true,
+        tab.id,
+      );
+      this.setSceneVersion(
+        tab.id,
+        Math.max(this.getSceneVersion(tab.id), getSceneVersion(elements)),
+      );
+    }
   }, SYNC_FULL_SCENE_INTERVAL_MS);
 
   queueSaveToFirebase = throttle(
     () => {
       if (this.portal.socketInitialized) {
-        this.saveCollabRoomToFirebase(
-          getSyncableElements(
-            this.excalidrawAPI.getSceneElementsIncludingDeleted(),
-          ),
-        );
+        this.saveCollabRoomToFirebase();
       }
     },
     SYNC_FULL_SCENE_INTERVAL_MS,

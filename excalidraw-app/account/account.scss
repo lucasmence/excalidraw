@@ -115,6 +115,76 @@
     border-color: var(--account-border);
     color: inherit;
   }
+
+  &--small {
+    padding: 6px 10px;
+    font-size: 0.82rem;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// contas guardadas neste navegador (seletor e diálogo)
+// -----------------------------------------------------------------------------
+
+.account-avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &__item {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    border: 1px solid var(--account-border);
+    border-radius: 8px;
+    background: var(--account-field);
+  }
+
+  &__info {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  &__id {
+    overflow: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__meta {
+    color: var(--account-text-weak);
+    font-size: 0.78rem;
+  }
+
+  &__action,
+  &__buttons {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+  }
 }
 
 .account-link {
@@ -235,6 +305,12 @@
   padding: 6px 10px 8px;
   font-size: 0.82rem;
   color: var(--text-primary-color, inherit);
+
+  &__account {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
 
   &__title {
     color: var(--keybinding-color, #8d8d8d);

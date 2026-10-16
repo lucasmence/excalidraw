@@ -1,0 +1,107 @@
+/* Barra de abas: uma "ilha" flutuante no topo do canvas, no mesmo estilo dos
+   demais controles do editor. */
+.excalidraw {
+  .excalidraw-ui-tabs {
+    position: absolute;
+    top: 0.75rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--zIndex-layerUI);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: min(72vw, 52rem);
+    padding: 0.25rem;
+    border-radius: var(--border-radius-lg);
+    background-color: var(--island-bg-color);
+    box-shadow: var(--shadow-island);
+    color: var(--color-on-surface);
+
+    &__list {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: thin;
+      max-width: 100%;
+    }
+
+    &__tab {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex: 0 0 auto;
+      max-width: 12rem;
+      padding: 0.2rem 0.4rem;
+      border-radius: var(--border-radius-md);
+      font-size: 0.8rem;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+
+      &:hover {
+        background-color: var(--button-hover-bg);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 1px;
+      }
+
+      &.is-active {
+        background-color: var(--color-primary);
+        color: var(--color-primary-contrast, #fff);
+
+        &:hover {
+          background-color: var(--color-primary);
+        }
+      }
+    }
+
+    &__name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    &__input {
+      width: 7rem;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      outline: none;
+    }
+
+    &__close,
+    &__add {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      border: none;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      line-height: 1;
+      border-radius: var(--border-radius-md);
+
+      &:hover {
+        background-color: var(--button-hover-bg);
+      }
+    }
+
+    &__close {
+      width: 1.1rem;
+      height: 1.1rem;
+      font-size: 0.95rem;
+    }
+
+    &__add {
+      width: 1.6rem;
+      height: 1.6rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+  }
+}
