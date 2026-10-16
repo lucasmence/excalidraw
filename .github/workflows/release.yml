@@ -7,7 +7,7 @@
 #
 # A versão vem nesta ordem: input do disparo manual → variável do repositório
 # `RELEASE_VERSION` (Settings → Secrets and variables → Actions → Variables) →
-# `1.04`. O `build-docker.yml` usa exatamente a mesma regra para taguear a
+# `1.05`. O `build-docker.yml` usa exatamente a mesma regra para taguear a
 # imagem, então mudar a variável no repositório muda os dois de uma vez.
 #
 # A tag é criada com o `GITHUB_TOKEN`, e pushes feitos com esse token **não**
@@ -24,7 +24,7 @@ on:
       version:
         description: "Versão do release"
         required: false
-        default: "1.04"
+        default: "1.05"
 
 permissions:
   contents: write
@@ -38,7 +38,7 @@ concurrency:
 
 env:
   # mesmo cálculo do build-docker.yml: mantenha os dois em sincronia
-  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.04' }}
+  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.05' }}
 
 jobs:
   release:
@@ -51,9 +51,9 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          # aceita o sufixo de letra das versões de teste (ex.: 1.04b)
+          # aceita o sufixo de letra das versões de teste (ex.: 1.05b)
           if ! [[ "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?[a-z]?$ ]]; then
-            echo "versão inválida: '${RELEASE_VERSION}' (use algo como 1.04 ou 1.04b)" >&2
+            echo "versão inválida: '${RELEASE_VERSION}' (use algo como 1.05 ou 1.05b)" >&2
             exit 1
           fi
           echo "version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"

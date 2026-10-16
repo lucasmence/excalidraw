@@ -5,14 +5,14 @@
 #                         container (veja docker/entrypoint.sh);
 #   - `excalidraw-collab` → collab-server/Dockerfile: servidor de salas.
 #
-# Tags: `sha-<curto>` sempre; `latest` e a versão do release (ex.: `1.04`) no
+# Tags: `sha-<curto>` sempre; `latest` e a versão do release (ex.: `1.05`) no
 # master; o nome da tag quando o push é de uma tag do git. Em pull request só
 # constrói (fork não tem permissão de escrever em pacote), o que já valida o
 # Dockerfile. Depois de publicar, o job `smoke-test` sobe a imagem e confere a
 # pilha inteira (nginx → API → MySQL).
 #
 # A versão usada no master vem do input do disparo manual, da variável do
-# repositório `RELEASE_VERSION` ou do padrão `1.04` — exatamente a mesma regra
+# repositório `RELEASE_VERSION` ou do padrão `1.05` — exatamente a mesma regra
 # do `release.yml`, que cria o GitHub Release com essa versão.
 #
 # Obs.: o app é construído com o `.env.production` do repositório (as variáveis
@@ -32,7 +32,7 @@ on:
       version:
         description: "Versão da imagem"
         required: false
-        default: "1.04"
+        default: "1.05"
 
 permissions:
   contents: read
@@ -46,7 +46,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   # mesmo cálculo do release.yml: mantenha os dois em sincronia
-  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.04' }}
+  RELEASE_VERSION: ${{ github.event.inputs.version || vars.RELEASE_VERSION || '1.05' }}
 
 jobs:
   build:
@@ -75,9 +75,9 @@ jobs:
           SUFFIX: ${{ matrix.suffix }}
         run: |
           set -euo pipefail
-          # aceita o sufixo de letra das versões de teste (ex.: 1.04b)
+          # aceita o sufixo de letra das versões de teste (ex.: 1.05b)
           if ! [[ "${RELEASE_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?[a-z]?$ ]]; then
-            echo "versão inválida: '${RELEASE_VERSION}' (use algo como 1.04 ou 1.04b)" >&2
+            echo "versão inválida: '${RELEASE_VERSION}' (use algo como 1.05 ou 1.05b)" >&2
             exit 1
           fi
           image="${REGISTRY}/${GITHUB_REPOSITORY,,}${SUFFIX}"

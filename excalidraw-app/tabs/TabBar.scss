@@ -1,75 +1,93 @@
-@use "../../packages/excalidraw/css/variables.module" as *;
+/* Barra de abas estilo navegador: uma faixa fixa no topo do editor, de ponta a
+   ponta, com as abas encostadas umas nas outras. A aba ativa se "cola" no
+   conteúdo (o canvas) logo abaixo; as demais ficam sobre o fundo da faixa.
 
-/* Barra de abas: uma "ilha" flutuante no canto superior esquerdo, na mesma
-   linha do menu e logo à direita dele, no mesmo estilo dos demais controles do
-   editor.
-
-   O espaço é curto: o topo centralizado pertence à toolbar, que é pintada
-   depois da barra de abas (e por isso já a cobriu por inteiro uma vez). Por
-   isso a largura para antes dela. */
+   Não há barra de rolagem: as abas dividem a largura e encolhem até um mínimo
+   (só um encolhimento extremo, com muitas abas, chega a permitir arrastar a
+   faixa — e até nesse caso a barra de rolagem fica escondida). */
 .excalidraw {
+  --tabs-bar-height: 2.5rem;
+
+  /* a faixa ocupa o topo, então o menu e a toolbar do editor descem para logo
+     abaixo dela (senão ficariam por baixo das abas) */
+  .FixedSideContainer.FixedSideContainer_side_top {
+    top: calc(var(--editor-container-padding) + var(--tabs-bar-height));
+  }
+
+  /* no celular o selo de status do viewport também nasce no topo da tela e,
+     tendo z-index maior que a faixa, flutuaria por cima das abas: desce junto */
+  .viewport-status-frame__badge-row {
+    top: calc(
+      var(--viewport-status-frame-border-width) + 0.5rem +
+        var(--tabs-bar-height)
+    );
+  }
+
   .excalidraw-ui-tabs {
     position: absolute;
-    // mesma linha da ilha do menu: começa no padding do editor e ocupa a altura
-    // do botão do menu
-    top: var(--editor-container-padding);
-    left: calc(
-      var(--editor-container-padding) + var(--lg-button-size) + 0.5rem
-    );
-    // altura do botão do menu, padding incluso: as duas ilhas ficam do mesmo
-    // tamanho e alinhadas no topo
-    box-sizing: border-box;
-    height: var(--lg-button-size);
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: var(--zIndex-layerUI);
+    box-sizing: border-box;
+    height: var(--tabs-bar-height);
     display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    // o que sobra entre o menu e a toolbar: ~18rem de cada lado do centro já
-    // são da toolbar (e do botão do laser, quando há colaboração)
-    max-width: min(
-      22rem,
-      calc(
-        50% - 18rem - var(--editor-container-padding) - var(--lg-button-size) -
-          0.5rem
-      )
-    );
-    padding: 0.25rem;
-    border-radius: var(--border-radius-lg);
-    background-color: var(--island-bg-color);
-    box-shadow: var(--shadow-island);
+    align-items: flex-end;
+    gap: 0;
+    padding: 0.25rem 0.5rem 0;
+    background-color: var(--color-surface-low);
+    // desenha a linha de base por dentro, para a aba ativa (que é opaca e vai
+    // até o fundo) cobrir justamente o trecho dela e parecer ligada ao conteúdo
+    box-shadow: inset 0 -1px 0 0 var(--color-border-outline-variant);
     color: var(--color-on-surface);
-
-    // no celular a toolbar vai para a parte de baixo: a barra pode usar toda a
-    // largura que sobra até a borda direita
-    @include isMobile {
-      max-width: calc(
-        100% - var(--editor-container-padding) * 2 - var(--lg-button-size) -
-          0.5rem
-      );
-    }
 
     &__list {
       display: flex;
-      align-items: center;
-      gap: 0.25rem;
+      align-items: flex-end;
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 100%;
       overflow-x: auto;
       overflow-y: hidden;
-      scrollbar-width: thin;
-      max-width: 100%;
+      // sem barra de rolagem: as abas encolhem antes de transbordar
+      scrollbar-width: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
     }
 
     &__tab {
+      position: relative;
       display: flex;
       align-items: center;
       gap: 0.35rem;
-      flex: 0 0 auto;
-      max-width: 12rem;
-      padding: 0.2rem 0.4rem;
-      border-radius: var(--border-radius-md);
+      flex: 1 1 0;
+      min-width: 3rem;
+      max-width: 13rem;
+      height: 100%;
+      padding: 0 0.4rem 0 0.6rem;
+      border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
       font-size: 0.8rem;
       cursor: pointer;
       user-select: none;
       white-space: nowrap;
+      transition: background-color 0.12s ease;
+
+      // separador fino entre abas, como nos navegadores
+      &::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 30%;
+        bottom: 30%;
+        width: 1px;
+        background-color: var(--color-border-outline-variant);
+      }
+
+      &:first-child::before {
+        content: none;
+      }
 
       &:hover {
         background-color: var(--button-hover-bg);
@@ -77,26 +95,48 @@
 
       &:focus-visible {
         outline: 2px solid var(--color-primary);
-        outline-offset: 1px;
+        outline-offset: -2px;
       }
 
+      // a aba ativa usa a mesma cor do conteúdo: some a linha de base sob ela e
+      // ela parece descer até o canvas
       &.is-active {
-        background-color: var(--color-primary);
-        color: var(--color-primary-contrast, #fff);
+        background-color: var(--color-surface-lowest);
 
         &:hover {
-          background-color: var(--color-primary);
+          background-color: var(--color-surface-lowest);
+        }
+
+        // sem separador dos dois lados da aba ativa
+        &::before,
+        & + .excalidraw-ui-tabs__tab::before {
+          content: none;
+        }
+      }
+
+      // os controles só aparecem na aba ativa ou em hover/foco, como nos
+      // navegadores (ficam no DOM, então continuam clicáveis por testes)
+      &:hover,
+      &.is-active,
+      &:focus-within {
+        .excalidraw-ui-tabs__rename,
+        .excalidraw-ui-tabs__close {
+          opacity: 1;
         }
       }
     }
 
     &__name {
+      flex: 1 1 auto;
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     &__input {
-      width: 7rem;
+      flex: 1 1 auto;
+      min-width: 0;
+      width: 100%;
       border: none;
       background: transparent;
       color: inherit;
@@ -105,29 +145,27 @@
     }
 
     &__rename,
-    &__close,
-    &__add {
+    &__close {
       display: flex;
       align-items: center;
       justify-content: center;
       flex: 0 0 auto;
+      width: 1.25rem;
+      height: 1.25rem;
+      padding: 0;
       border: none;
+      border-radius: 50%;
       background: transparent;
       color: inherit;
       cursor: pointer;
       line-height: 1;
-      border-radius: var(--border-radius-md);
+      font-size: 0.95rem;
+      opacity: 0;
+      transition: opacity 0.12s ease, background-color 0.12s ease;
 
       &:hover {
         background-color: var(--button-hover-bg);
       }
-    }
-
-    &__rename,
-    &__close {
-      width: 1.1rem;
-      height: 1.1rem;
-      font-size: 0.95rem;
     }
 
     // o lápis é o caminho visível para renomear (o duplo clique continua)
@@ -137,10 +175,26 @@
     }
 
     &__add {
-      width: 1.6rem;
-      height: 1.6rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      align-self: center;
+      width: 1.75rem;
+      height: 1.75rem;
+      margin-left: 0.4rem;
+      padding: 0;
+      border: none;
+      border-radius: var(--border-radius-md);
+      background: transparent;
+      color: inherit;
       font-size: 1.1rem;
       font-weight: 700;
+      cursor: pointer;
+
+      &:hover {
+        background-color: var(--button-hover-bg);
+      }
     }
   }
 }
