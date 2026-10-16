@@ -431,7 +431,13 @@
     "new": "Nova aba",
     "close": "Fechar aba",
     "rename": "Renomear aba",
-    "defaultName": "Aba {{number}}"
+    "defaultName": "Aba {{number}}",
+    "closeConfirm": {
+      "title": "Apagar aba",
+      "description": "Tem certeza que deseja apagar a aba \"{{name}}\"? O conteúdo dela será perdido.",
+      "action": "Apagar",
+      "actionCountdown": "Apagar ({{seconds}})"
+    }
   },
   "errorDialog": {
     "title": "Erro"

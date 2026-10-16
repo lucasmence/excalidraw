@@ -126,6 +126,7 @@ import {
   getWorkspace,
   setCanvasTabId,
   setTabScene,
+  subscribeTabs,
   updateActiveTabScene,
 } from "./tabs/tabs-store";
 import { getActiveTab, getWorkspaceElements } from "./tabs/workspace";
@@ -699,6 +700,32 @@ const ExcalidrawWrapper = () => {
     applyTabSceneToCanvas(excalidrawAPI, activeTabId);
     loadTabImages(getTabScene(activeTabId)?.elements ?? []);
   }, [activeTabId, excalidrawAPI, loadTabImages]);
+
+  // renomear/criar/fechar/reordenar aba mexe só no store das abas — isso não
+  // passa pelo `onChange` do editor, que é quem agenda o save. Sem este efeito
+  // o nome só chegaria ao servidor na próxima edição e se perderia num reload.
+  useEffect(() => {
+    if (!excalidrawAPI) {
+      return;
+    }
+
+    const unsubscribe = subscribeTabs(() => {
+      // a cena da aba ativa é a que está no canvas: espelha antes de salvar
+      updateActiveTabScene({
+        elements: excalidrawAPI.getSceneElementsIncludingDeleted(),
+        appState: excalidrawAPI.getAppState(),
+      });
+      LocalData.saveWorkspace(
+        getWorkspace(),
+        excalidrawAPI.getFiles(),
+        () => {},
+      );
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [excalidrawAPI]);
 
   useEffect(() => {
     if (!excalidrawAPI || (!isCollabDisabled && !collabAPI)) {

@@ -1,21 +1,52 @@
-/* Barra de abas: uma "ilha" flutuante no topo do canvas, no mesmo estilo dos
-   demais controles do editor. */
+@use "../../packages/excalidraw/css/variables.module" as *;
+
+/* Barra de abas: uma "ilha" flutuante no canto superior esquerdo, na mesma
+   linha do menu e logo à direita dele, no mesmo estilo dos demais controles do
+   editor.
+
+   O espaço é curto: o topo centralizado pertence à toolbar, que é pintada
+   depois da barra de abas (e por isso já a cobriu por inteiro uma vez). Por
+   isso a largura para antes dela. */
 .excalidraw {
   .excalidraw-ui-tabs {
     position: absolute;
-    top: 0.75rem;
-    left: 50%;
-    transform: translateX(-50%);
+    // mesma linha da ilha do menu: começa no padding do editor e ocupa a altura
+    // do botão do menu
+    top: var(--editor-container-padding);
+    left: calc(
+      var(--editor-container-padding) + var(--lg-button-size) + 0.5rem
+    );
+    // altura do botão do menu, padding incluso: as duas ilhas ficam do mesmo
+    // tamanho e alinhadas no topo
+    box-sizing: border-box;
+    height: var(--lg-button-size);
     z-index: var(--zIndex-layerUI);
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    max-width: min(72vw, 52rem);
+    // o que sobra entre o menu e a toolbar: ~18rem de cada lado do centro já
+    // são da toolbar (e do botão do laser, quando há colaboração)
+    max-width: min(
+      22rem,
+      calc(
+        50% - 18rem - var(--editor-container-padding) - var(--lg-button-size) -
+          0.5rem
+      )
+    );
     padding: 0.25rem;
     border-radius: var(--border-radius-lg);
     background-color: var(--island-bg-color);
     box-shadow: var(--shadow-island);
     color: var(--color-on-surface);
+
+    // no celular a toolbar vai para a parte de baixo: a barra pode usar toda a
+    // largura que sobra até a borda direita
+    @include isMobile {
+      max-width: calc(
+        100% - var(--editor-container-padding) * 2 - var(--lg-button-size) -
+          0.5rem
+      );
+    }
 
     &__list {
       display: flex;
@@ -73,6 +104,7 @@
       outline: none;
     }
 
+    &__rename,
     &__close,
     &__add {
       display: flex;
@@ -91,10 +123,17 @@
       }
     }
 
+    &__rename,
     &__close {
       width: 1.1rem;
       height: 1.1rem;
       font-size: 0.95rem;
+    }
+
+    // o lápis é o caminho visível para renomear (o duplo clique continua)
+    &__rename svg {
+      width: 0.7rem;
+      height: 0.7rem;
     }
 
     &__add {

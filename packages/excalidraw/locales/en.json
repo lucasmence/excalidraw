@@ -445,7 +445,13 @@
     "new": "New tab",
     "close": "Close tab",
     "rename": "Rename tab",
-    "defaultName": "Tab {{number}}"
+    "defaultName": "Tab {{number}}",
+    "closeConfirm": {
+      "title": "Delete tab",
+      "description": "Are you sure you want to delete the tab \"{{name}}\"? Its content will be lost.",
+      "action": "Delete",
+      "actionCountdown": "Delete ({{seconds}})"
+    }
   },
   "errorDialog": {
     "title": "Error"
