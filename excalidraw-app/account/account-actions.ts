@@ -8,14 +8,42 @@
  * também é uma navegação nova.
  */
 import {
+  collabRoomOf,
   getActiveSession,
   logout,
   resumableAccounts,
   switchAccount,
 } from "../auth/session";
+import { getCollaborationLink } from "../data";
 import { LocalData } from "../data/LocalData";
 
 import { reloadApp } from "./reload";
+
+/**
+ * Publica na URL a sala fixa da conta ativa — sem conta, tira o link da URL.
+ *
+ * A troca de conta recarrega o app, e a recarga preserva a URL: sem isto o link
+ * da sala da conta que saiu continuaria ali, e o app abriria a sala dela em vez
+ * da sala padrão da conta que entrou.
+ */
+export const applyActiveAccountRoomUrl = () => {
+  const room = collabRoomOf();
+  const url = room
+    ? getCollaborationLink(room)
+    : `${window.location.origin}${window.location.pathname}`;
+
+  window.history.replaceState({}, "", url);
+};
+
+/**
+ * Recarrega o app já apontando a URL para a sala da conta que entrou. Vale para
+ * qualquer entrada de conta (troca ou "adicionar conta"): o editor é de uma
+ * conta só, e a cena recarregada é a dela.
+ */
+export const reloadIntoActiveAccount = () => {
+  applyActiveAccountRoomUrl();
+  reloadApp();
+};
 
 /**
  * Passa para outra conta guardada neste navegador. O flush vem antes de
@@ -25,7 +53,7 @@ import { reloadApp } from "./reload";
 export const switchToAccount = async (accountId: string) => {
   await LocalData.flushSaveAsync();
   await switchAccount(accountId);
-  reloadApp();
+  reloadIntoActiveAccount();
 };
 
 /**

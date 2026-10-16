@@ -8,6 +8,7 @@ import { render as renderEditor } from "@excalidraw/excalidraw/tests/test-utils"
 import { AccountBoundary } from "../account/AccountBoundary";
 import { AccountDialog } from "../account/AccountDialog";
 import { AccountMenuItems } from "../account/AccountMenuItems";
+import { switchToAccount } from "../account/account-actions";
 import {
   accountDialogAtom,
   addingAccountAtom,
@@ -15,6 +16,7 @@ import {
 } from "../account/account-state";
 import { reloadApp } from "../account/reload";
 import { Provider, appJotaiStore } from "../app-jotai";
+import { deriveAccountKeys } from "../auth/keys";
 import {
   accountAtom,
   bindAccountStore,
@@ -25,6 +27,7 @@ import {
   markLoginKeyRevealed,
   switchAccount,
 } from "../auth/session";
+import { getCollaborationLink } from "../data";
 
 import { createFakeApiServer } from "./helpers/fakeApiServer";
 import { ensureWebcrypto } from "./helpers/webcrypto";
@@ -120,6 +123,32 @@ describe("alternar entre contas", () => {
 
     await waitFor(() => expect(getActiveSession()?.accountId).toBe(alice));
     expect(reloadMock).toHaveBeenCalled();
+  });
+
+  it("leva a URL para a sala padrão da conta que entrou", async () => {
+    const alice = await givenAccount(ALICE_KEY);
+    await givenAccount(BOB_KEY);
+
+    // a Bob está ativa: a URL é a sala dela, como o app publica ao abrir
+    const bobKeys = await deriveAccountKeys(BOB_KEY);
+    window.history.replaceState(
+      {},
+      "",
+      getCollaborationLink({
+        roomId: bobKeys.collabRoomId,
+        roomKey: bobKeys.collabRoomKey,
+      }),
+    );
+
+    await switchToAccount(alice);
+
+    // a recarga preserva a URL: ela precisa apontar para a sala da Alice, e
+    // não para o link da sala que ficou da conta anterior
+    const aliceKeys = await deriveAccountKeys(ALICE_KEY);
+    expect(window.location.hash).toBe(
+      `#room=${aliceKeys.collabRoomId},${aliceKeys.collabRoomKey}`,
+    );
+    expect(window.location.href).not.toContain(bobKeys.collabRoomId);
   });
 
   it("tira uma conta do navegador sem mexer na sessão", async () => {

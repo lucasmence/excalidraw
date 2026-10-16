@@ -17,7 +17,7 @@ import { useAtom, useSetAtom } from "../app-jotai";
 import { getPreferredLanguage } from "../app-language/language-detector";
 
 import { addingAccountAtom } from "./account-state";
-import { reloadApp } from "./reload";
+import { reloadIntoActiveAccount } from "./account-actions";
 import {
   AccountGate,
   AccountKeyConfirmation,
@@ -67,7 +67,7 @@ export const AccountBoundary = ({
         error={null}
         adding
         onCancel={() => setAddingFrom(null)}
-        onAuthenticated={reloadApp}
+        onAuthenticated={reloadIntoActiveAccount}
       />
     );
   }
