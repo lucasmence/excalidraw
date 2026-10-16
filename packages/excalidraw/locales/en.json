@@ -803,6 +803,16 @@
       "remove": "Remove",
       "removeHint": "Removing an account only takes it out of this browser. It stays on the server, and you can sign in again with the 12 words."
     },
+    "name": {
+      "label": "Account name",
+      "placeholder": "e.g. Personal, Work",
+      "save": "Save name",
+      "hint": "The name is only here to recognize the account on this browser. It is not sent to the server."
+    },
+    "room": {
+      "privateHint": "This room belongs to your account: it opens on its own here, and its key comes from your login key. Another account cannot enter it.",
+      "shareHint": "The link below is the fixed link of your account's room. Open it on another of your devices to continue in the same scene — another account opening it lands in its own room."
+    },
     "add": {
       "title": "Add account",
       "description": "Create an account or sign in with another key. The account you are using stays saved in this browser.",

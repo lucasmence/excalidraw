@@ -90,6 +90,7 @@ import Collab, {
 } from "./collab/Collab";
 import { AccountBoundary } from "./account/AccountBoundary";
 import { AccountDialog } from "./account/AccountDialog";
+import { isAccountRoomLink, resolveRoomLink } from "./account/account-actions";
 import { collabRoomOf } from "./auth/session";
 import { AppFooter } from "./components/AppFooter";
 import { AppMainMenu } from "./components/AppMainMenu";
@@ -249,7 +250,11 @@ const initializeSceneInner = async (opts: {
     appState: restoreAppState(localDataState?.appState, null),
   };
 
-  let roomLinkData = getCollaborationLinkData(window.location.href);
+  // Sala que a URL traz: a conta ativa só abre a própria, então o link de uma
+  // sala alheia já volta para a URL da conta aqui (ver `resolveRoomLink`).
+  let roomLinkData = resolveRoomLink(
+    getCollaborationLinkData(window.location.href),
+  );
   const isExternalScene = !!(id || jsonBackendMatch || roomLinkData);
   if (isExternalScene) {
     if (
@@ -333,8 +338,9 @@ const initializeSceneInner = async (opts: {
   // descartaria a cena para buscar a da sala). A conexão é disparada em segundo
   // plano, sem bloquear o carregamento do editor.
   const ownRoom = collabRoomOf();
-  const isOwnRoom =
-    !!ownRoom && !!roomLinkData && roomLinkData.roomId === ownRoom.roomId;
+  // com conta, `resolveRoomLink` já garantiu que ou não há link, ou é o par
+  // exato da sala dela (id e chave)
+  const isOwnRoom = isAccountRoomLink(roomLinkData);
 
   if (opts.collabAPI && ownRoom && (isOwnRoom || !roomLinkData)) {
     opts.collabAPI
@@ -347,6 +353,8 @@ const initializeSceneInner = async (opts: {
       });
   }
 
+  // entrar em sala que não é a da conta só acontece sem conta (testes/dev):
+  // com conta, `resolveRoomLink` já trocou o link alheio pelo da própria sala
   if (roomLinkData && opts.collabAPI && !isOwnRoom) {
     const { excalidrawAPI } = opts;
 

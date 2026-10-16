@@ -49,6 +49,13 @@ type StoredAccount = {
   remember: boolean;
   /** último `keyRevealedAt` visto do servidor, para funcionar offline */
   keyRevealedAt: string | null;
+  /**
+   * Apelido dado pelo usuário só para reconhecer a conta.
+   *
+   * Vive apenas neste navegador: é um rótulo de interface, não um dado da
+   * conta (o servidor não guarda nome nenhum), e por isso não pede requisição.
+   */
+  name: string | null;
 };
 
 type StoredAccounts = {
@@ -65,6 +72,8 @@ export type StoredAccountInfo = {
   resumable: boolean;
   remember: boolean;
   keyRevealedAt: string | null;
+  /** apelido local da conta; `null` = sem apelido */
+  name: string | null;
 };
 
 export type AccountState =
@@ -77,6 +86,11 @@ export type RemoteAccountInfo = {
   accountId: string;
   keyRevealedAt: string | null;
   remember: boolean;
+  /**
+   * Apelido local da conta ativa — anda junto com o resto para a interface
+   * (menu, diálogo da chave) não ter que procurar a conta na lista guardada.
+   */
+  name: string | null;
 };
 
 type ActiveSession = {
@@ -86,6 +100,8 @@ type ActiveSession = {
   remember: boolean;
   /** último `keyRevealedAt` que o servidor informou (usado offline) */
   remoteKeyRevealedAt: string | null;
+  /** apelido local da conta ativa; `null` = sem apelido */
+  name: string | null;
 };
 
 /** chave já existe no servidor: em vez de criar, o usuário deve entrar */
@@ -139,12 +155,15 @@ export const requireActiveSession = () => {
 
 export const loginKeyOf = () => active?.loginKey ?? null;
 
+/** par de uma sala, como o link de colaboração carrega (`#room=<id>,<key>`) */
+export type RoomLink = { roomId: string; roomKey: string };
+
 /**
  * Sala de colaboração fixa da conta ativa: o app sempre abre essa sala, e como
  * o par vem da frase o link é sempre o mesmo. `null` quando não há conta (nos
  * testes/dev com `VITE_APP_STORAGE=browser` não existe sala automática).
  */
-export const collabRoomOf = (): { roomId: string; roomKey: string } | null =>
+export const collabRoomOf = (): RoomLink | null =>
   active
     ? {
         roomId: active.keys.collabRoomId,
@@ -162,6 +181,18 @@ const emptyStoredAccounts = (): StoredAccounts => ({
   accounts: [],
 });
 
+/**
+ * Apelido é texto curto de uma linha: espaços das pontas fora e vazio quer
+ * dizer "sem apelido" (o mesmo que `null`). O corte é só uma trava de tamanho
+ * para o que já estivesse gravado; o campo da interface limita ao digitar.
+ */
+export const ACCOUNT_NAME_MAX_LENGTH = 60;
+
+const normalizeAccountName = (name: string | null | undefined) => {
+  const clean = (name ?? "").trim().slice(0, ACCOUNT_NAME_MAX_LENGTH).trim();
+  return clean || null;
+};
+
 const normalizeStoredAccount = (value: any): StoredAccount | null => {
   if (!value || typeof value.accountId !== "string" || !value.accountId) {
     return null;
@@ -173,6 +204,9 @@ const normalizeStoredAccount = (value: any): StoredAccount | null => {
     remember: !!value.remember,
     keyRevealedAt:
       typeof value.keyRevealedAt === "string" ? value.keyRevealedAt : null,
+    name: normalizeAccountName(
+      typeof value.name === "string" ? value.name : null,
+    ),
   };
 };
 
@@ -260,6 +294,7 @@ const toAccountInfo = (stored: StoredAccounts): StoredAccountInfo[] =>
     resumable: account.loginKey !== null,
     remember: account.remember,
     keyRevealedAt: account.keyRevealedAt,
+    name: account.name,
   }));
 
 /** publica a lista no atom para a interface (menu, seletor) acompanhar */
@@ -277,6 +312,7 @@ const entryOf = (session: ActiveSession): StoredAccount => ({
   loginKey: session.remember ? session.loginKey : null,
   remember: session.remember,
   keyRevealedAt: session.remoteKeyRevealedAt,
+  name: session.name,
 });
 
 /** insere ou atualiza a conta mantendo a posição dela na lista */
@@ -341,6 +377,7 @@ const remoteInfo = (): RemoteAccountInfo => ({
   accountId: active!.accountId,
   keyRevealedAt: active!.remoteKeyRevealedAt,
   remember: active!.remember,
+  name: active!.name,
 });
 
 const authenticatedState = (offline: boolean): AccountState => ({
@@ -458,6 +495,7 @@ export const bootstrapAccount = async () => {
       keys,
       remember: activeEntry.remember,
       remoteKeyRevealedAt: activeEntry.keyRevealedAt,
+      name: activeEntry.name,
     };
 
     setAccountState(authenticatedState(false));
@@ -507,16 +545,28 @@ export const createAccount = async ({
     throw error;
   }
 
+  // conta nova: ainda não existe apelido para ela
   active = {
     accountId: keys.accountId,
     loginKey: mnemonic,
     keys,
     remember,
     remoteKeyRevealedAt: null,
+    name: null,
   };
   persistActive();
   setAccountState(authenticatedState(false));
 };
+
+/**
+ * Apelido que já estava guardado para esta conta, se houver. Entrar de novo
+ * numa conta que continua aqui (por exemplo "adicionar conta" digitando uma
+ * chave que já estava salva) não pode apagar o nome dela.
+ */
+const storedNameOf = (accountId: string) =>
+  readStoredAccounts().accounts.find(
+    (account) => account.accountId === accountId,
+  )?.name ?? null;
 
 export const login = async ({
   loginKey,
@@ -545,6 +595,7 @@ export const login = async ({
     keys,
     remember,
     remoteKeyRevealedAt: data.keyRevealedAt,
+    name: storedNameOf(data.accountId),
   };
   persistActive();
   setAccountState(authenticatedState(false));
@@ -580,10 +631,43 @@ export const switchAccount = async (accountId: string) => {
     keys,
     remember: account.remember,
     remoteKeyRevealedAt: account.keyRevealedAt,
+    name: account.name,
   };
 
   persistActive();
   setAccountState(authenticatedState(false));
+};
+
+/**
+ * Dá (ou tira, com `null`) o apelido de uma conta guardada neste navegador.
+ *
+ * Diferente do resto, não passa pelo servidor nem pede recarga: o nome é só um
+ * rótulo local, então basta gravar e republicar a lista para a interface — o
+ * menu da conta e a lista de troca — já mostrar o nome novo.
+ */
+export const renameAccount = (accountId: string, name: string | null) => {
+  const clean = normalizeAccountName(name);
+  const stored = readStoredAccounts();
+
+  if (!stored.accounts.some((account) => account.accountId === accountId)) {
+    // conta que não está guardada aqui: não existe onde gravar o apelido
+    return;
+  }
+
+  const next: StoredAccounts = {
+    ...stored,
+    accounts: stored.accounts.map((account) =>
+      account.accountId === accountId ? { ...account, name: clean } : account,
+    ),
+  };
+
+  writeStoredAccounts(next);
+  publishAccounts(next);
+
+  if (active?.accountId === accountId) {
+    active.name = clean;
+    setAccountState(authenticatedState(false));
+  }
 };
 
 /** tira uma conta do navegador sem mexer na sessão ativa (nem no servidor) */

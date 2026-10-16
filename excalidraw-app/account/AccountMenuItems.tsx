@@ -11,7 +11,7 @@ import { AccountAvatar } from "./AccountList";
 import {
   accountDialogAtom,
   addingAccountAtom,
-  shortAccountId,
+  accountLabel,
 } from "./account-state";
 
 const formatDate = (value: string, langCode: string) => {
@@ -53,9 +53,17 @@ export const AccountMenuItems = () => {
         <div className="account-menu">
           <div className="account-menu__title">{t("account.menu.section")}</div>
           <div className="account-menu__account">
-            <AccountAvatar accountId={account.remote.accountId} />
-            <div className="account-menu__id" title={account.remote.accountId}>
-              {shortAccountId(account.remote.accountId)}
+            <AccountAvatar
+              accountId={account.remote.accountId}
+              name={account.remote.name}
+            />
+            <div
+              className={`account-menu__id${
+                account.remote.name ? " account-menu__id--name" : ""
+              }`}
+              title={account.remote.accountId}
+            >
+              {accountLabel(account.remote)}
             </div>
           </div>
           <div className="account-menu__caption">

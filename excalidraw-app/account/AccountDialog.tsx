@@ -6,6 +6,7 @@ import {
   accountAtom,
   accountsAtom,
   forgetAccount,
+  getActiveSession,
   loginKeyOf,
 } from "../auth/session";
 import { useAtom, useAtomValue, useSetAtom } from "../app-jotai";
@@ -13,6 +14,7 @@ import { LocalData } from "../data/LocalData";
 
 import { signOutActiveAccount, switchToAccount } from "./account-actions";
 import { AccountList } from "./AccountList";
+import { AccountNameField } from "./AccountNameField";
 import { LoginKeyWords } from "./LoginKeyWords";
 import { accountDialogAtom, addingAccountAtom } from "./account-state";
 
@@ -35,8 +37,9 @@ export const AccountDialog = () => {
 
   if (dialog === "key") {
     const loginKey = loginKeyOf();
+    const session = getActiveSession();
 
-    if (!loginKey) {
+    if (!loginKey || !session) {
       return null;
     }
 
@@ -58,6 +61,8 @@ export const AccountDialog = () => {
               })
             : t("account.menu.keyNotRevealed")}
         </p>
+        {/* o nome nasce aqui: é vendo a chave que a conta ganha um rosto */}
+        <AccountNameField accountId={session.accountId} name={session.name} />
       </Dialog>
     );
   }

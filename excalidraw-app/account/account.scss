@@ -172,6 +172,12 @@
     font-size: 0.88rem;
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    // com apelido não é mais um código: sai a monoespaçada e o texto pesa
+    &--name {
+      font-family: inherit;
+      font-weight: 600;
+    }
   }
 
   &__meta {
@@ -210,6 +216,35 @@
   font-size: 0.95rem;
   line-height: 1.6;
   resize: vertical;
+}
+
+.account-name {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  &__label {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  &__row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  &__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 9px 12px;
+    border: 1px solid var(--account-border);
+    border-radius: 8px;
+    background: var(--account-field);
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.92rem;
+  }
 }
 
 .account-words {
@@ -322,6 +357,11 @@
   &__id {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.85rem;
+
+    &--name {
+      font-family: inherit;
+      font-weight: 600;
+    }
   }
 
   &__caption {

@@ -1,18 +1,28 @@
 import { t } from "@excalidraw/excalidraw/i18n";
+import clsx from "clsx";
 import React from "react";
 
-import { accountColor, accountInitials, shortAccountId } from "./account-state";
+import { accountColor, accountInitials, accountLabel } from "./account-state";
 
 import type { StoredAccountInfo } from "../auth/session";
 
-/** avatar da conta: as "iniciais" do id, na cor fixa daquela conta */
-export const AccountAvatar = ({ accountId }: { accountId: string }) => (
+/**
+ * Avatar da conta: as iniciais do apelido (ou do id, sem apelido), na cor fixa
+ * daquela conta.
+ */
+export const AccountAvatar = ({
+  accountId,
+  name,
+}: {
+  accountId: string;
+  name?: string | null;
+}) => (
   <span
     className="account-avatar"
     style={{ background: accountColor(accountId) }}
     aria-hidden="true"
   >
-    {accountInitials(accountId)}
+    {accountInitials(name || accountId)}
   </span>
 );
 
@@ -32,10 +42,15 @@ export const AccountList = ({
   <ul className="account-list">
     {accounts.map((account) => (
       <li key={account.accountId} className="account-list__item">
-        <AccountAvatar accountId={account.accountId} />
+        <AccountAvatar accountId={account.accountId} name={account.name} />
         <span className="account-list__info">
-          <span className="account-list__id" title={account.accountId}>
-            {shortAccountId(account.accountId)}
+          <span
+            className={clsx("account-list__id", {
+              "account-list__id--name": account.name,
+            })}
+            title={account.accountId}
+          >
+            {accountLabel(account)}
           </span>
           <span className="account-list__meta">
             {account.active

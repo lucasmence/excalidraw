@@ -777,6 +777,16 @@
       "remove": "Remover",
       "removeHint": "Remover só tira a conta deste navegador. Ela continua no servidor, e você pode entrar de novo com as 12 palavras."
     },
+    "name": {
+      "label": "Nome da conta",
+      "placeholder": "ex.: Pessoal, Trabalho",
+      "save": "Salvar nome",
+      "hint": "O nome serve só para reconhecer a conta neste navegador. Ele não vai para o servidor."
+    },
+    "room": {
+      "privateHint": "Esta sala é da sua conta: ela abre sozinha aqui, e a chave dela vem da sua chave de login. Outra conta não consegue entrar.",
+      "shareHint": "O link abaixo é o link fixo da sala da sua conta. Abra ele em outro aparelho seu para continuar na mesma cena — outra conta que abrir cai na sala dela."
+    },
     "add": {
       "title": "Adicionar conta",
       "description": "Crie uma conta ou entre com outra chave. A conta que você está usando continua guardada neste navegador.",

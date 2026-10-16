@@ -13,6 +13,7 @@ import {
   logout,
   resumableAccounts,
   switchAccount,
+  type RoomLink,
 } from "../auth/session";
 import { getCollaborationLink } from "../data";
 import { LocalData } from "../data/LocalData";
@@ -43,6 +44,52 @@ export const applyActiveAccountRoomUrl = () => {
 export const reloadIntoActiveAccount = () => {
   applyActiveAccountRoomUrl();
   reloadApp();
+};
+
+const sameRoom = (a: RoomLink, b: RoomLink) =>
+  a.roomId === b.roomId && a.roomKey === b.roomKey;
+
+/**
+ * O link é exatamente o da sala da conta ativa?
+ *
+ * Id **e** chave têm de bater: a chave vem da chave de login, então um par com
+ * o id certo e a chave trocada não é a sala da conta — é link adulterado, e
+ * vale como sala alheia (o app prefere a sala de verdade da conta a conectar
+ * com a chave errada e não conseguir decifrar nada).
+ */
+export const isAccountRoomLink = (roomLinkData: RoomLink | null) => {
+  const accountRoom = collabRoomOf();
+
+  return !!accountRoom && !!roomLinkData && sameRoom(roomLinkData, accountRoom);
+};
+
+/**
+ * Sala que a URL pode abrir para a conta ativa.
+ *
+ * A conta tem uma sala fixa e exclusiva, derivada da chave de login, e é a
+ * única que ela abre: o link de outra sala — colado por outra pessoa, ou
+ * sobrando de outra conta na barra de endereços — é descartado na hora e a URL
+ * volta a apontar para a sala da conta. É o que impede uma conta de cair na
+ * sala alheia (e a sala dela de ser aberta por outra conta, que passa pelo
+ * mesmo caminho ao abrir o link).
+ *
+ * Devolve a sala que a cena deve abrir. Sem conta (testes/dev com
+ * `VITE_APP_STORAGE=browser`) nada é restringido: o link da URL vale como antes.
+ */
+export const resolveRoomLink = (
+  roomLinkData: RoomLink | null,
+): RoomLink | null => {
+  const accountRoom = collabRoomOf();
+
+  if (!accountRoom || !roomLinkData || isAccountRoomLink(roomLinkData)) {
+    return roomLinkData;
+  }
+
+  // sala alheia (ou par adulterado): a URL volta para a sala da conta, sem
+  // entrar na outra
+  applyActiveAccountRoomUrl();
+
+  return accountRoom;
 };
 
 /**

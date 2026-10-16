@@ -4,6 +4,7 @@ import { useI18n } from "@excalidraw/excalidraw/i18n";
 import React, { useState } from "react";
 
 import { useAtom, useAtomValue } from "../app-jotai";
+import { collabRoomOf } from "../auth/session";
 
 import {
   activeRoomLinkAtom,
@@ -15,12 +16,16 @@ import { roomDialogAtom } from "./room-state";
 import "./RoomDialog.scss";
 
 /**
- * Diálogo da sala de colaboração: cria a sessão, mostra o link para convidar
- * outras pessoas (com botão de copiar) e encerra.
+ * Diálogo da sala de colaboração: abre/encerra a sessão e mostra o link da sala
+ * (com botão de copiar).
  *
  * O link é a própria URL do app com `#room=<roomId>,<roomKey>`: a chave viaja no
- * hash, que o navegador não manda para o servidor. Quem tem o link entra na
- * sala, e o servidor de salas só reemite o que passa por ele — cifrado.
+ * hash, que o navegador não manda para o servidor, e o servidor de salas só
+ * reemite o que passa por ele — cifrado.
+ *
+ * Com conta, a sessão é a sala fixa dela: o link mostrado é o dessa sala (que
+ * não muda) e não existe sala nova para convidar terceiros. Conta que abrir o
+ * link de outra cai na própria sala (ver `resolveRoomLink`).
  *
  * Renderizado fora do menu/editor pelo mesmo motivo de `AccountDialog`: o
  * conteúdo do menu é desmontado ao selecionar um item.
@@ -31,6 +36,11 @@ export const RoomDialog = () => {
   const collabAPI = useAtomValue(collabAPIAtom);
   const isCollaborating = useAtomValue(isCollaboratingAtom);
   const roomLink = useAtomValue(activeRoomLinkAtom);
+  /**
+   * Sala fixa da conta ativa; `null` sem conta (testes/dev com
+   * `VITE_APP_STORAGE=browser`), quando o diálogo volta a criar salas.
+   */
+  const accountRoom = collabRoomOf();
   const [copied, setCopied] = useState(false);
   const [starting, setStarting] = useState(false);
 
@@ -46,9 +56,13 @@ export const RoomDialog = () => {
   const startSession = async () => {
     setStarting(true);
     try {
-      // sem `existingRoomLinkData` o Collab gera sala+chave, coloca o link na
-      // URL e abre a conexão — a cena que está na tela vira a cena da sala
-      await collabAPI.startCollaboration(null);
+      // Com conta, a sessão é a sala dela (mantendo a cena da tela, como no
+      // boot): gerar sala nova deixaria o usuário fora da própria sala. Sem
+      // conta, o Collab gera sala+chave e a cena da tela vira a da sala.
+      await collabAPI.startCollaboration(
+        accountRoom,
+        accountRoom ? { keepScene: true, replaceHistory: true } : undefined,
+      );
     } catch (error) {
       console.error("[collab] não consegui iniciar a sala", error);
     } finally {
@@ -85,7 +99,11 @@ export const RoomDialog = () => {
           <p className="room-dialog__text">
             {t("roomDialog.desc_inProgressIntro")}
           </p>
-          <p className="room-dialog__text">{t("roomDialog.desc_shareLink")}</p>
+          <p className="room-dialog__text">
+            {accountRoom
+              ? t("account.room.shareHint")
+              : t("roomDialog.desc_shareLink")}
+          </p>
           <input
             className="room-dialog__link"
             data-testid="room-dialog-link"
@@ -117,7 +135,11 @@ export const RoomDialog = () => {
         </>
       ) : (
         <>
-          <p className="room-dialog__text">{t("roomDialog.desc_intro")}</p>
+          <p className="room-dialog__text">
+            {accountRoom
+              ? t("account.room.privateHint")
+              : t("roomDialog.desc_intro")}
+          </p>
           <p className="room-dialog__text room-dialog__text--muted">
             {t("roomDialog.desc_privacy")}
           </p>

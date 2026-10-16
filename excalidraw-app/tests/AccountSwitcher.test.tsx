@@ -195,6 +195,60 @@ describe("alternar entre contas", () => {
   });
 });
 
+describe("nome da conta", () => {
+  it("guarda o nome dado junto da chave e passa a mostrar ele na troca", async () => {
+    const alice = await givenAccount(ALICE_KEY);
+    const bob = await givenAccount(BOB_KEY);
+
+    await renderEditor(<TestApp />);
+
+    openMenu();
+    fireEvent.click(
+      (await screen.findByText(/^view my login key$/i)).closest("button")!,
+    );
+
+    await waitFor(() =>
+      expect(appJotaiStore.get(accountDialogAtom)).toBe("key"),
+    );
+
+    fireEvent.change(await screen.findByTestId("account-name-input"), {
+      target: { value: "Trabalho" },
+    });
+    fireEvent.click(screen.getByTestId("account-name-save"));
+
+    // a troca de contas reconhece a conta pelo nome, e a que não tem nome
+    // continua pelo pedaço do id
+    act(() => appJotaiStore.set(accountDialogAtom, "accounts"));
+
+    expect(await screen.findByText("Trabalho")).toBeInTheDocument();
+    expect(screen.queryByText(shortAccountId(bob))).toBeNull();
+    expect(screen.getByText(shortAccountId(alice))).toBeInTheDocument();
+  });
+
+  it("apaga o nome quando o campo fica em branco", async () => {
+    const bob = await givenAccount(BOB_KEY);
+
+    await renderEditor(<TestApp />);
+
+    openMenu();
+    fireEvent.click(
+      (await screen.findByText(/^view my login key$/i)).closest("button")!,
+    );
+
+    const input = await screen.findByTestId("account-name-input");
+    fireEvent.change(input, { target: { value: "Trabalho" } });
+    fireEvent.click(screen.getByTestId("account-name-save"));
+    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.click(screen.getByTestId("account-name-save"));
+
+    // sem nome a conta volta a se apresentar pelo id
+    act(() => appJotaiStore.set(accountDialogAtom, "accounts"));
+
+    expect(await screen.findByText(shortAccountId(bob))).toBeInTheDocument();
+    expect(screen.queryByText("Trabalho")).toBeNull();
+  });
+});
+
 describe("adicionar conta", () => {
   it("abre a tela de conta no lugar do editor e entra com a conta nova", async () => {
     const alice = await givenAccount(ALICE_KEY);
