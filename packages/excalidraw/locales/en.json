@@ -453,6 +453,14 @@
       "actionCountdown": "Delete ({{seconds}})"
     }
   },
+  "saveButton": {
+    "label": "Save",
+    "title": "Save the scene to the database now",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "browserOnly": "Saved in this browser",
+    "wait": "Save ({{seconds}}s)"
+  },
   "errorDialog": {
     "title": "Error"
   },

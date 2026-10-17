@@ -48,6 +48,7 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { Mutable, ValueOf } from "@excalidraw/common/utility-types";
 
+import { isAccountSwitching } from "../account/account-switch";
 import { appJotaiStore, atom } from "../app-jotai";
 import {
   CURSOR_SYNC_TIMEOUT,
@@ -321,6 +322,13 @@ class Collab extends PureComponent<CollabProps, CollabState> {
   };
 
   private beforeUnload = withBatchedUpdates((event: BeforeUnloadEvent) => {
+    // a troca de conta recarrega o app de propósito: o aviso de "sala sem
+    // gravar" barraria essa recarga e deixaria a cena da conta que saiu na tela
+    // da conta que entrou (ver `account-switch`)
+    if (isAccountSwitching()) {
+      return;
+    }
+
     this.syncActiveTabFromCanvas();
     const workspace = getWorkspace();
 

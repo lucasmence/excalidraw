@@ -18,6 +18,7 @@ import {
 import { getCollaborationLink } from "../data";
 import { LocalData } from "../data/LocalData";
 
+import { beginAccountSwitch } from "./account-switch";
 import { reloadApp } from "./reload";
 
 /**
@@ -40,8 +41,13 @@ export const applyActiveAccountRoomUrl = () => {
  * Recarrega o app já apontando a URL para a sala da conta que entrou. Vale para
  * qualquer entrada de conta (troca ou "adicionar conta"): o editor é de uma
  * conta só, e a cena recarregada é a dela.
+ *
+ * A sessão já é a da conta que entrou, e a tela ainda é a da que saiu: daqui
+ * pra frente o que está na tela não pode mais ser gravado, nem a recarga pode
+ * ser bloqueada (ver `account-switch`).
  */
 export const reloadIntoActiveAccount = () => {
+  beginAccountSwitch();
   applyActiveAccountRoomUrl();
   reloadApp();
 };

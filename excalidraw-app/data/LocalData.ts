@@ -41,6 +41,7 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { MaybePromise } from "@excalidraw/common/utility-types";
 
+import { isAccountSwitching } from "../account/account-switch";
 import { appJotaiStore, atom } from "../app-jotai";
 import { SAVE_TO_LOCAL_STORAGE_TIMEOUT, STORAGE_KEYS } from "../app_constants";
 import { getActiveSession } from "../auth/session";
@@ -380,6 +381,12 @@ export class LocalData {
       return;
     }
 
+    // a troca de conta já trocou a sessão e ainda não recarregou: a cena que
+    // sobrou na tela é da conta que saiu (ver `account-switch`)
+    if (isAccountSwitching()) {
+      return;
+    }
+
     await this.saveDataState(workspace);
 
     await this.fileStorage.saveFiles({
@@ -541,6 +548,12 @@ export class LocalData {
   };
 
   /**
+   * O último save ficou só no navegador (a API não respondeu)? Quem salva à mão
+   * usa isto para dizer onde a cena foi parar (ver `SaveButton`).
+   */
+  static isPendingSync = () => hasPendingSync();
+
+  /**
    * Como o `flushSave`, mas espera o save terminar. A troca de conta precisa
    * disso: o save é debounced e, disparado depois da troca, escreveria os dados
    * da conta que saiu na conta que entrou.
@@ -561,7 +574,7 @@ export class LocalData {
   };
 
   static isSavePaused = () => {
-    return document.hidden || this.locker.isLocked();
+    return document.hidden || this.locker.isLocked() || isAccountSwitching();
   };
 
   /**

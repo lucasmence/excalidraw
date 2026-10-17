@@ -91,10 +91,12 @@ import Collab, {
 import { AccountBoundary } from "./account/AccountBoundary";
 import { AccountDialog } from "./account/AccountDialog";
 import { isAccountRoomLink, resolveRoomLink } from "./account/account-actions";
+import { isAccountSwitching } from "./account/account-switch";
 import { collabRoomOf } from "./auth/session";
 import { AppFooter } from "./components/AppFooter";
 import { AppMainMenu } from "./components/AppMainMenu";
 import { AppWelcomeScreen } from "./components/AppWelcomeScreen";
+import { SaveButton } from "./components/SaveButton";
 import { TopErrorBoundary } from "./components/TopErrorBoundary";
 
 import {
@@ -888,6 +890,11 @@ const ExcalidrawWrapper = () => {
 
       if (
         excalidrawAPI &&
+        // a troca de conta recarrega o app de propósito: a tela ainda é da
+        // conta que saiu, mas o que estiver pendente nela não vai para a conta
+        // que entrou — então nada justifica barrar a recarga (ver
+        // `account-switch`)
+        !isAccountSwitching() &&
         LocalData.fileStorage.shouldPreventUnload(
           excalidrawAPI.getSceneElements(),
         )
@@ -1076,6 +1083,10 @@ const ExcalidrawWrapper = () => {
         autoFocus={true}
         theme={editorTheme}
         onThemeChange={setAppTheme}
+        renderTopLeftUI={(isMobile) => (
+          // fica na mesma linha do menu (canto esquerdo), logo depois dele
+          <SaveButton excalidrawAPI={excalidrawAPI} isMobile={isMobile} />
+        )}
         renderTopRightUI={(isMobile) => {
           if (isMobile || !collabAPI || isCollabDisabled) {
             return null;

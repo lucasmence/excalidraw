@@ -1,0 +1,42 @@
+/* Botão de salvar a cena no banco, na linha do menu (canto esquerdo).
+
+   Ele vem antes do menu no DOM (`renderTopLeftUI` monta a linha nessa ordem),
+   mas `order` o joga para depois: o menu é o ponto de referência do canto e não
+   deve andar de lugar por causa deste botão. */
+.excalidraw .excalidraw-ui-top-left .save-button {
+  order: 1;
+
+  flex-shrink: 0;
+  gap: 0.4rem;
+  width: auto;
+  min-width: var(--lg-button-size);
+  height: var(--lg-button-size);
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+
+  --button-width: auto;
+  --button-height: var(--lg-button-size);
+  --button-bg: var(--color-surface-mid);
+  --button-hover-bg: var(--color-surface-high);
+
+  svg {
+    flex: 0 0 auto;
+    width: var(--lg-icon-size);
+    height: var(--lg-icon-size);
+  }
+
+  /* no celular só cabe o ícone (o rótulo fica no `title`/`aria-label`) */
+  &--icon-only {
+    width: var(--lg-button-size);
+    padding: 0;
+  }
+
+  &[disabled] {
+    cursor: not-allowed;
+    color: var(--color-disabled);
+
+    --button-bg: var(--color-surface-mid);
+    --button-hover-bg: var(--color-surface-mid);
+  }
+}

@@ -439,6 +439,14 @@
       "actionCountdown": "Apagar ({{seconds}})"
     }
   },
+  "saveButton": {
+    "label": "Salvar",
+    "title": "Salvar a cena no banco agora",
+    "saving": "Salvando…",
+    "saved": "Salvo",
+    "browserOnly": "Salvo neste navegador",
+    "wait": "Salvar ({{seconds}}s)"
+  },
   "errorDialog": {
     "title": "Erro"
   },
