@@ -181,6 +181,7 @@ export class AppClipboard {
         data.programmaticAPI
           ? convertToExcalidrawElements(
               data.elements as ExcalidrawElementSkeleton[],
+              { renderEnvironment: this.app.renderEnvironment },
             )
           : data.elements
       ) as readonly ExcalidrawElement[];
@@ -212,6 +213,7 @@ export class AppClipboard {
 
         const elements = convertToExcalidrawElements(skeletonElements, {
           regenerateIds: true,
+          renderEnvironment: this.app.renderEnvironment,
         });
 
         this.app.addElementsFromPasteOrLibrary({
@@ -235,7 +237,14 @@ export class AppClipboard {
     const nonEmptyLines = normalizeEOL(data.text)
       .split(/\n+/)
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      // some embed codes (e.g. Instagram) put the provider's loader <script>
+      // on a separate line, which isn't an embed by itself
+      .filter(
+        (s) =>
+          !/^<script\b[^>]*>\s*<\/script\b[^>]*>\s*$/i.test(s) ||
+          maybeParseEmbedSrc(s) !== s,
+      );
     const embbeddableUrls = nonEmptyLines
       .map((str) => maybeParseEmbedSrc(str))
       .filter(
@@ -459,15 +468,30 @@ export class AppClipboard {
             y: currentY,
           });
 
-          let metrics = measureText(originalText, fontString, lineHeight);
+          let metrics = measureText(
+            originalText,
+            fontString,
+            lineHeight,
+            this.app.renderEnvironment,
+          );
           const isTextUnwrapped = metrics.width > maxTextWidth;
 
           const text = isTextUnwrapped
-            ? wrapText(originalText, fontString, maxTextWidth)
+            ? wrapText(
+                originalText,
+                fontString,
+                maxTextWidth,
+                this.app.renderEnvironment,
+              )
             : originalText;
 
           metrics = isTextUnwrapped
-            ? measureText(text, fontString, lineHeight)
+            ? measureText(
+                text,
+                fontString,
+                lineHeight,
+                this.app.renderEnvironment,
+              )
             : metrics;
 
           const startX = x - metrics.width / 2;
@@ -482,6 +506,7 @@ export class AppClipboard {
             lineHeight,
             autoResize: !isTextUnwrapped,
             frameId: topLayerFrame ? topLayerFrame.id : null,
+            renderEnvironment: this.app.renderEnvironment,
           });
           acc.push(element);
           currentY += element.height + LINE_GAP;
